@@ -437,13 +437,33 @@ async def stars_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             pass
 
 async def state_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Показывает текущее состояние пользователя в Redis."""
     chat_id = update.effective_chat.id
+    # Пробуем записать и прочитать тестовое значение
+    test_key = f"test:{chat_id}"
+    write_err = ""
+    read_err = ""
+    try:
+        r = _redis()
+        if r:
+            r.set(test_key, "ok", ex=60)
+        else:
+            write_err = "redis() вернул None"
+    except Exception as e:
+        write_err = str(e)
+
+    try:
+        val = redis_get(test_key)
+    except Exception as e:
+        val = None
+        read_err = str(e)
+
     state = redis_get(f"state:{chat_id}")
-    redis_ok = "задан" if REDIS_URL else "НЕ ЗАДАН"
     await update.message.reply_text(
-        f"state: <code>{state or 'нет'}</code>\n"
-        f"KV_REDIS_URL: <code>{redis_ok}</code>",
+        f"KV_REDIS_URL: <code>{'задан' if REDIS_URL else 'НЕТ'}</code>\n"
+        f"write_err: <code>{write_err or 'нет'}</code>\n"
+        f"read_err: <code>{read_err or 'нет'}</code>\n"
+        f"test read: <code>{val}</code>\n"
+        f"state: <code>{state or 'нет'}</code>",
         parse_mode="HTML"
     )
 
