@@ -233,41 +233,47 @@ KNOWLEDGE_BASE = {
 # ─── Клавиатуры ───────────────────────────────────────────────────────────────
 def main_keyboard() -> dict:
     return raw_keyboard([
-        [btn("⊹ Сайт", web_app_url=SITE_URL, style="primary")],
+        [btn("Открыть сайт Panacea", web_app_url=SITE_URL, style="primary")],
         [
-            btn("◎ Канал", url=CHANNEL_URL),
-            btn("▷ YouTube", url=YOUTUBE_URL),
+            btn("Канал Panacea", url=CHANNEL_URL, style="success"),
+            btn("Panacea YT", url=YOUTUBE_URL, style="danger"),
         ],
-        [btn("◈ Справочный центр", callback_data="support")],
+        [btn("📋 Справочный центр", callback_data="support", style="primary")],
     ])
 
 def support_keyboard() -> dict:
     rows = []
     items = list(KNOWLEDGE_BASE.items())
-    for i in range(0, len(items), 2):
-        row = [btn(items[i][1]["title"], callback_data=items[i][0], style="primary")]
-        if i + 1 < len(items):
-            row.append(btn(items[i + 1][1]["title"], callback_data=items[i + 1][0], style="primary"))
+    # Убираем kb_tech из общего списка — он пойдёт в отдельную строку
+    main_items = [(k, v) for k, v in items if k != "kb_tech"]
+    for i in range(0, len(main_items), 2):
+        row = [btn(main_items[i][1]["title"], callback_data=main_items[i][0])]
+        if i + 1 < len(main_items):
+            row.append(btn(main_items[i + 1][1]["title"], callback_data=main_items[i + 1][0]))
         rows.append(row)
+    # Технические вопросы и Связь с командой в одну строку
     rows.append([
-        btn("◎ Связь с командой", callback_data="contact", style="success"),
-        btn("← Назад", callback_data="back_main", style="danger"),
+        btn("⚙ Технические вопросы", callback_data="kb_tech"),
+        btn("◎ Связь с командой", callback_data="contact"),
+    ])
+    rows.append([
+        btn("← Назад", callback_data="back_main", style="primary"),
     ])
     return raw_keyboard(rows)
 
 def article_keyboard() -> dict:
     return raw_keyboard([
-        [btn("← Назад", callback_data="support", style="danger")],
+        [btn("← Назад", callback_data="support", style="primary")],
     ])
 
 def contact_keyboard() -> dict:
     return raw_keyboard([
-        [btn("← Отмена", callback_data="support", style="danger")],
+        [btn("← Отмена", callback_data="support", style="primary")],
     ])
 
 def confirm_keyboard() -> dict:
     return raw_keyboard([
-        [btn("← В главное меню", callback_data="back_main", style="success")],
+        [btn("← В главное меню", callback_data="back_main", style="primary")],
     ])
 
 # ─── Хелпер: отправка/редактирование через сырой API (для поддержки style) ───
