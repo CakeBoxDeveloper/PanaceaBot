@@ -438,7 +438,6 @@ async def stars_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         "currency":    "XTR",
         "prices":      [{"label": "Тест", "amount": 5}],
     })
-    # Логируем результат в канал если есть
     if SUPPORT_CHAT:
         try:
             _post("sendMessage", {
@@ -446,10 +445,10 @@ async def stars_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 "text": f"/stars вызван\nРезультат: <code>{json.dumps(result)}</code>",
                 "parse_mode": "HTML",
             })
-        except Exception as e:
+        except Exception:
             pass
 
-
+async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.pre_checkout_query.answer(ok=True)
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
