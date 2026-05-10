@@ -7,7 +7,7 @@ import json
 import asyncio
 from http.server import BaseHTTPRequestHandler
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # ─── Настройки (берутся из Environment Variables на Vercel) ───────────────────
@@ -27,7 +27,7 @@ YOUTUBE_URL = "https://www.youtube.com/@PanaceaChannel"
 # ─── Клавиатура ───────────────────────────────────────────────────────────────
 def build_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
-        [InlineKeyboardButton("🌐 Сайт", url=SITE_URL)],
+        [InlineKeyboardButton("🌐 Сайт", web_app=WebAppInfo(url=SITE_URL))],
         [
             InlineKeyboardButton("📢 Канал", url=CHANNEL_URL),
             InlineKeyboardButton("▶️ YouTube", url=YOUTUBE_URL),
