@@ -19,7 +19,7 @@ WELCOME_TEXT = (
     "выбирай куда хочешь перейти 👇"
 )
 
-PHOTO_URL   = "https://example.com/your-image.jpg"  # ← загрузи картинку и замени ссылку
+PHOTO_URL   = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaAvatar.png"
 SITE_URL    = "https://panacea.mom"
 CHANNEL_URL = "https://t.me/PanaceaPlus"
 YOUTUBE_URL = "https://www.youtube.com/@PanaceaChannel"
