@@ -309,18 +309,18 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await edit_photo_raw(chat_id, msg_id, PHOTO_PLUS, PLUS_TEXT, plus_keyboard())
 
     elif data in ("plus_self", "plus_gift"):
-        # Telegram сам спрашивает email через need_email=True
         for_self = data == "plus_self"
-        label    = "Panacea Plus — для себя" if for_self else "Panacea Plus — подарок другу"
-        _post("sendInvoice", {
+        prompt   = (
+            "◎ Укажи свой email, который используешь для входа на panacea.mom:"
+            if for_self else
+            "◎ Укажи email друга, который он использует для входа на panacea.mom:"
+        )
+        # Шлём ForceReply с меткой в тексте чтобы handle_reply знал контекст
+        _post("sendMessage", {
             "chat_id":    chat_id,
-            "title":      "Panacea Plus",
-            "description": label,
-            "payload":    json.dumps({"for_self": for_self}),
-            "currency":   "XTR",
-            "prices":     [{"label": "Panacea Plus", "amount": STARS_PRICE}],
-            "need_email": True,
-            "send_email_to_provider": False,
+            "text":       f"__plus_{'self' if for_self else 'gift'}__\n\n{prompt}",
+            "parse_mode": "HTML",
+            "reply_markup": {"force_reply": True, "input_field_placeholder": "email@example.com", "selective": True},
         })
 
     elif data == "contact":
@@ -339,22 +339,21 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                              KNOWLEDGE_BASE[data]["text"], article_keyboard())
 
 async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Ловим ответы на ForceReply (сообщения в поддержку)."""
+    """Ловим любой текст — ответ на сообщение бота (ForceReply)."""
     msg = update.message
     if not msg or not msg.reply_to_message:
         return
-
-    # Проверяем что это ответ на наш ForceReply-промпт
-    prompt_id = context.bot_data.get(f"support_prompt_{msg.chat_id}")
-    if msg.reply_to_message.message_id != prompt_id:
+    if not msg.reply_to_message.from_user or not msg.reply_to_message.from_user.is_bot:
         return
 
-    user = update.effective_user
-    text = msg.text
+    user    = update.effective_user
+    text    = msg.text.strip()
+    chat_id = msg.chat_id
+    prompt_text = msg.reply_to_message.text or ""
 
-    # Удаляем оба сообщения — промпт и ответ пользователя
+    # Удаляем промпт и сообщение пользователя
     try:
-        await context.bot.delete_message(msg.chat_id, msg.reply_to_message.message_id)
+        await context.bot.delete_message(chat_id, msg.reply_to_message.message_id)
     except Exception:
         pass
     try:
@@ -362,30 +361,49 @@ async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception:
         pass
 
-    # Чистим сохранённый id
-    context.bot_data.pop(f"support_prompt_{msg.chat_id}", None)
+    # Определяем контекст по метке в тексте промпта
+    if prompt_text.startswith("__plus_self__"):
+        # Выставляем счёт — email в описании
+        _post("sendInvoice", {
+            "chat_id":     chat_id,
+            "title":       "Panacea Plus",
+            "description": f"Для аккаунта: {text}",
+            "payload":     json.dumps({"for_self": True, "email": text}),
+            "currency":    "XTR",
+            "prices":      [{"label": "Panacea Plus", "amount": STARS_PRICE}],
+        })
 
-    # Шлём команде
-    if SUPPORT_CHAT:
-        try:
-            _post("sendMessage", {
-                "chat_id":    SUPPORT_CHAT,
-                "text": (
-                    f"◎ <b>Новое обращение</b>\n\n"
-                    f"От: {user.full_name} (@{user.username or '—'})\n"
-                    f"ID: <code>{user.id}</code>\n\n{text}"
-                ),
-                "parse_mode": "HTML",
-            })
-        except Exception:
-            pass
+    elif prompt_text.startswith("__plus_gift__"):
+        _post("sendInvoice", {
+            "chat_id":     chat_id,
+            "title":       "Panacea Plus — подарок",
+            "description": f"Для аккаунта друга: {text}",
+            "payload":     json.dumps({"for_self": False, "email": text}),
+            "currency":    "XTR",
+            "prices":      [{"label": "Panacea Plus (подарок)", "amount": STARS_PRICE}],
+        })
 
-    # Подтверждение пользователю
-    await send_photo_raw(
-        msg.chat_id, PHOTO_MAIN,
-        "✦ Сообщение отправлено. Мы ответим в ближайшее время.",
-        confirm_keyboard(),
-    )
+    else:
+        # Обращение в поддержку
+        if SUPPORT_CHAT:
+            try:
+                _post("sendMessage", {
+                    "chat_id": SUPPORT_CHAT,
+                    "text": (
+                        f"◎ <b>Новое обращение</b>\n\n"
+                        f"От: {user.full_name} (@{user.username or '—'})\n"
+                        f"ID: <code>{user.id}</code>\n\n{text}"
+                    ),
+                    "parse_mode": "HTML",
+                })
+            except Exception:
+                pass
+
+        await send_photo_raw(
+            chat_id, PHOTO_MAIN,
+            "✦ Сообщение отправлено. Мы ответим в ближайшее время.",
+            confirm_keyboard(),
+        )
 
 async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.pre_checkout_query.answer(ok=True)
