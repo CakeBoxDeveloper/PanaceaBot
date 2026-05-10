@@ -460,12 +460,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         for_self = state == STATE_PLUS_SELF
         label    = f"Для аккаунта: {text}" if for_self else f"Подарок для: {text}"
         _post("sendInvoice", {
-            "chat_id":     chat_id,
-            "title":       "Panacea Plus",
-            "description": label,
-            "payload":     json.dumps({"for_self": for_self, "email": text}),
-            "currency":    "XTR",
-            "prices":      [{"label": "Panacea Plus", "amount": STARS_PRICE}],
+            "chat_id":      chat_id,
+            "title":        "Panacea Plus",
+            "description":  label,
+            "payload":      json.dumps({"for_self": for_self, "email": text}),
+            "currency":     "XTR",
+            "prices":       [{"label": "Panacea Plus", "amount": STARS_PRICE}],
+            "photo_url":    PHOTO_PLUS,
+            "photo_width":  800,
+            "photo_height": 800,
         })
 
     # Если состояния нет — игнорируем
