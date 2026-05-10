@@ -13,56 +13,43 @@ from telegram.ext import (
     MessageHandler, PreCheckoutQueryHandler, filters, ContextTypes,
 )
 
-# ─── Redis (Upstash через Vercel KV) ─────────────────────────────────────────
-REDIS_URL   = os.environ.get("KV_REDIS_URL", "")          # redis://default:pass@host:port
-KV_API_URL  = os.environ.get("KV_REST_API_URL", "")       # https://...upstash.io
-KV_API_TOKEN = os.environ.get("KV_REST_API_TOKEN", "")    # token
+# ─── Redis ────────────────────────────────────────────────────────────────────
+import redis as redislib
+
+REDIS_URL = os.environ.get("KV_REDIS_URL", "")
+
+def _redis():
+    if not REDIS_URL:
+        return None
+    try:
+        return redislib.from_url(REDIS_URL, decode_responses=True, socket_timeout=2)
+    except Exception:
+        return None
 
 def redis_set(key: str, value: str, ex: int = 300):
-    """Сохраняем состояние через Upstash REST API."""
-    if not KV_API_URL or not KV_API_TOKEN:
-        return
-    data = json.dumps(["SET", key, value, "EX", str(ex)]).encode()
-    req = urlreq.Request(
-        f"{KV_API_URL}/pipeline",
-        data=data,
-        headers={"Authorization": f"Bearer {KV_API_TOKEN}",
-                 "Content-Type": "application/json"},
-    )
-    try:
-        with urlreq.urlopen(req):
+    r = _redis()
+    if r:
+        try:
+            r.set(key, value, ex=ex)
+        except Exception:
             pass
-    except Exception:
-        pass
 
 def redis_get(key: str) -> str | None:
-    """Читаем состояние через Upstash REST API."""
-    if not KV_API_URL or not KV_API_TOKEN:
+    r = _redis()
+    if not r:
         return None
-    req = urlreq.Request(
-        f"{KV_API_URL}/get/{key}",
-        headers={"Authorization": f"Bearer {KV_API_TOKEN}"},
-    )
     try:
-        with urlreq.urlopen(req) as r:
-            result = json.loads(r.read())
-            return result.get("result")
+        return r.get(key)
     except Exception:
         return None
 
 def redis_del(key: str):
-    if not KV_API_URL or not KV_API_TOKEN:
-        return
-    req = urlreq.Request(
-        f"{KV_API_URL}/del/{key}",
-        headers={"Authorization": f"Bearer {KV_API_TOKEN}"},
-        method="GET",
-    )
-    try:
-        with urlreq.urlopen(req):
+    r = _redis()
+    if r:
+        try:
+            r.delete(key)
+        except Exception:
             pass
-    except Exception:
-        pass
 
 # ─── Настройки ────────────────────────────────────────────────────────────────
 BOT_TOKEN    = os.environ["BOT_TOKEN"]
@@ -453,11 +440,10 @@ async def state_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     """Показывает текущее состояние пользователя в Redis."""
     chat_id = update.effective_chat.id
     state = redis_get(f"state:{chat_id}")
-    kv_url = KV_API_URL[:30] + "..." if KV_API_URL else "НЕ ЗАДАН"
+    redis_ok = "задан" if REDIS_URL else "НЕ ЗАДАН"
     await update.message.reply_text(
         f"state: <code>{state or 'нет'}</code>\n"
-        f"KV_API_URL: <code>{kv_url}</code>\n"
-        f"KV_API_TOKEN: <code>{'задан' if KV_API_TOKEN else 'НЕ ЗАДАН'}</code>",
+        f"KV_REDIS_URL: <code>{redis_ok}</code>",
         parse_mode="HTML"
     )
 
