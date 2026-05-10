@@ -438,15 +438,28 @@ async def stars_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         "currency":    "XTR",
         "prices":      [{"label": "Тест", "amount": 5}],
     })
+    ok = result.get("ok", False)
     if SUPPORT_CHAT:
         try:
             _post("sendMessage", {
                 "chat_id": SUPPORT_CHAT,
-                "text": f"/stars вызван\nРезультат: <code>{json.dumps(result)}</code>",
+                "text": f"★ /stars: {'счёт создан' if ok else 'ошибка — ' + str(result.get('description'))}",
                 "parse_mode": "HTML",
             })
         except Exception:
             pass
+
+async def state_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает текущее состояние пользователя в Redis."""
+    chat_id = update.effective_chat.id
+    state = redis_get(f"state:{chat_id}")
+    kv_url = KV_API_URL[:30] + "..." if KV_API_URL else "НЕ ЗАДАН"
+    await update.message.reply_text(
+        f"state: <code>{state or 'нет'}</code>\n"
+        f"KV_API_URL: <code>{kv_url}</code>\n"
+        f"KV_API_TOKEN: <code>{'задан' if KV_API_TOKEN else 'НЕ ЗАДАН'}</code>",
+        parse_mode="HTML"
+    )
 
 async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.pre_checkout_query.answer(ok=True)
@@ -491,6 +504,7 @@ class handler(BaseHTTPRequestHandler):
             app = ApplicationBuilder().token(BOT_TOKEN).build()
             app.add_handler(CommandHandler("start", start))
             app.add_handler(CommandHandler("stars", stars_test))
+            app.add_handler(CommandHandler("state", state_debug))
             app.add_handler(CallbackQueryHandler(button))
             app.add_handler(PreCheckoutQueryHandler(pre_checkout))
             app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
