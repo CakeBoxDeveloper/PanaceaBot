@@ -330,6 +330,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = query.message.chat_id
     msg_id  = query.message.message_id
 
+    # Отладка — пишем последнее нажатие в Redis
+    redis_set(f"last_btn:{chat_id}", data, ex=300)
+
     if data == "back_main":
         redis_del(f"state:{chat_id}")
         edit_photo(chat_id, msg_id, PHOTO_MAIN, WELCOME_TEXT, main_keyboard())
@@ -458,11 +461,13 @@ async def state_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         read_err = str(e)
 
     state = redis_get(f"state:{chat_id}")
+    last_btn = redis_get(f"last_btn:{chat_id}")
     await update.message.reply_text(
         f"KV_REDIS_URL: <code>{'задан' if REDIS_URL else 'НЕТ'}</code>\n"
         f"write_err: <code>{write_err or 'нет'}</code>\n"
         f"read_err: <code>{read_err or 'нет'}</code>\n"
         f"test read: <code>{val}</code>\n"
+        f"last_btn: <code>{last_btn or 'нет'}</code>\n"
         f"state: <code>{state or 'нет'}</code>",
         parse_mode="HTML"
     )
