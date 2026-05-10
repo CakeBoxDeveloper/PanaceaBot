@@ -427,7 +427,29 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # Если состояния нет — игнорируем
 
-async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def stars_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Тестовый счёт на 5 звёзд."""
+    chat_id = update.effective_chat.id
+    result = _post("sendInvoice", {
+        "chat_id":     chat_id,
+        "title":       "Тест Stars",
+        "description": "Тестовый платёж — 5 звёзд",
+        "payload":     json.dumps({"test": True}),
+        "currency":    "XTR",
+        "prices":      [{"label": "Тест", "amount": 5}],
+    })
+    # Логируем результат в канал если есть
+    if SUPPORT_CHAT:
+        try:
+            _post("sendMessage", {
+                "chat_id": SUPPORT_CHAT,
+                "text": f"/stars вызван\nРезультат: <code>{json.dumps(result)}</code>",
+                "parse_mode": "HTML",
+            })
+        except Exception as e:
+            pass
+
+
     await update.pre_checkout_query.answer(ok=True)
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -469,6 +491,7 @@ class handler(BaseHTTPRequestHandler):
         async def process():
             app = ApplicationBuilder().token(BOT_TOKEN).build()
             app.add_handler(CommandHandler("start", start))
+            app.add_handler(CommandHandler("stars", stars_test))
             app.add_handler(CallbackQueryHandler(button))
             app.add_handler(PreCheckoutQueryHandler(pre_checkout))
             app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
