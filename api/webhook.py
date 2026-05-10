@@ -51,7 +51,57 @@ def redis_del(key: str):
         except Exception:
             pass
 
-# ─── Настройки ────────────────────────────────────────────────────────────────
+# ─── Firebase Admin ───────────────────────────────────────────────────────────
+import firebase_admin
+from firebase_admin import credentials, auth as fb_auth, firestore
+
+_fb_app = None
+
+def _get_fb():
+    global _fb_app
+    if _fb_app:
+        return firestore.client()
+    sa_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
+    if not sa_json:
+        return None
+    try:
+        sa = json.loads(sa_json)
+        cred = credentials.Certificate(sa)
+        _fb_app = firebase_admin.initialize_app(cred)
+    except Exception:
+        return None
+    return firestore.client()
+
+def activate_premium(email: str) -> tuple[bool, str]:
+    """Находит uid по email и записывает premium_status на 30 дней."""
+    try:
+        db = _get_fb()
+        if not db:
+            return False, "Firebase не инициализирован"
+
+        # Находим uid по email
+        user = fb_auth.get_user_by_email(email)
+        uid  = user.uid
+
+        now = int(__import__("time").time() * 1000)  # ms как в JS Date.now()
+        expires = now + 30 * 24 * 60 * 60 * 1000    # +30 дней в ms
+
+        # Пишем в sessions/{uid}/premium_status
+        ref = db.collection("sessions").document(uid)\
+                .collection("list").document("premium_status")
+        ref.set({
+            "active":      True,
+            "activatedAt": now,
+            "expiresAt":   expires,
+            "updatedAt":   firestore.SERVER_TIMESTAMP,
+        })
+        return True, uid
+    except fb_auth.UserNotFoundError:
+        return False, f"email не найден: {email}"
+    except Exception as e:
+        return False, str(e)
+
+
 BOT_TOKEN    = os.environ["BOT_TOKEN"]
 SUPPORT_CHAT = os.environ.get("SUPPORT_CHAT_ID", "")
 
@@ -379,6 +429,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     state = redis_get(f"state:{chat_id}")
 
+    # Логируем факт вызова
+    redis_set(f"last_text:{chat_id}", f"state={state}|text={text[:30]}", ex=300)
+
     # Удаляем сообщение пользователя
     delete_msg(chat_id, msg.message_id)
 
@@ -462,12 +515,14 @@ async def state_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     state = redis_get(f"state:{chat_id}")
     last_btn = redis_get(f"last_btn:{chat_id}")
+    last_text = redis_get(f"last_text:{chat_id}")
     await update.message.reply_text(
         f"KV_REDIS_URL: <code>{'задан' if REDIS_URL else 'НЕТ'}</code>\n"
         f"write_err: <code>{write_err or 'нет'}</code>\n"
         f"read_err: <code>{read_err or 'нет'}</code>\n"
         f"test read: <code>{val}</code>\n"
         f"last_btn: <code>{last_btn or 'нет'}</code>\n"
+        f"last_text: <code>{last_text or 'нет'}</code>\n"
         f"state: <code>{state or 'нет'}</code>",
         parse_mode="HTML"
     )
@@ -478,18 +533,32 @@ async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     payment = update.message.successful_payment
     payload = json.loads(payment.invoice_payload)
-    email   = payload.get("email", "—")
+    email   = payload.get("email", "")
     user    = update.effective_user
     chat_id = update.effective_chat.id
 
-    send_photo(chat_id, PHOTO_MAIN,
-        f"✦ <b>Оплата прошла!</b>\n\n"
-        f"Подписка Panacea Plus будет активирована на аккаунт "
-        f"<code>{email}</code> в течение нескольких минут.",
-        confirm_keyboard())
+    # Активируем подписку в Firebase
+    ok, detail = activate_premium(email) if email else (False, "email не передан")
+
+    if ok:
+        text = (
+            f"✦ <b>Оплата прошла!</b>\n\n"
+            f"Подписка Panacea Plus активирована на аккаунт "
+            f"<code>{email}</code>.\n\n"
+            f"Обнови страницу сайта — изменения уже применены."
+        )
+    else:
+        text = (
+            f"✦ <b>Оплата прошла!</b>\n\n"
+            f"Не удалось активировать автоматически: <code>{detail}</code>\n\n"
+            f"Мы активируем подписку вручную в течение нескольких минут."
+        )
+
+    send_photo(chat_id, PHOTO_MAIN, text, confirm_keyboard())
 
     if SUPPORT_CHAT:
         try:
+            status = "✅ активирована" if ok else f"❌ ошибка: {detail}"
             _post("sendMessage", {
                 "chat_id": SUPPORT_CHAT,
                 "text": (
@@ -498,7 +567,8 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     f"ID: <code>{user.id}</code>\n"
                     f"Email: <code>{email}</code>\n"
                     f"Для себя: {'да' if payload.get('for_self') else 'нет'}\n"
-                    f"Сумма: {payment.total_amount} XTR"
+                    f"Сумма: {payment.total_amount} XTR\n"
+                    f"Firebase: {status}"
                 ),
                 "parse_mode": "HTML",
             })
