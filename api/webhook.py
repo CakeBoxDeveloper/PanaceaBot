@@ -129,7 +129,7 @@ def raw_keyboard(rows: list[list[dict]]) -> dict:
 # ─── Тексты ───────────────────────────────────────────────────────────────────
 WELCOME_TEXT = " "
 
-SUPPORT_TEXT = "Справочный центр\n\nВыбери тему — и мы всё объясним:"
+SUPPORT_TEXT = "<blockquote>Справочный центр</blockquote>\n\nВыбери тему — и мы всё объясним:"
 
 PLUS_TEXT = (
     "<blockquote>Panacea Plus</blockquote>\n\n"
@@ -395,19 +395,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif data == "plus_self":
         redis_set(f"state:{chat_id}", STATE_PLUS_SELF)
         edit_photo(chat_id, msg_id, PHOTO_PLUS,
-            "Подписка для себя\n\nУкажи email, который используешь для входа на panacea.mom:",
+            "<blockquote>Подписка для себя</blockquote>\n\nУкажи email, который используешь для входа на panacea.mom:",
             cancel_keyboard("plus"))
 
     elif data == "plus_gift":
         redis_set(f"state:{chat_id}", STATE_PLUS_GIFT)
         edit_photo(chat_id, msg_id, PHOTO_PLUS,
-            "Подписка в подарок\n\nУкажи email друга, который он использует для входа на panacea.mom:",
+            "<blockquote>Подписка в подарок</blockquote>\n\nУкажи email друга, который он использует для входа на panacea.mom:",
             cancel_keyboard("plus"))
 
     elif data == "contact":
         redis_set(f"state:{chat_id}", STATE_SUPPORT)
         edit_photo(chat_id, msg_id, PHOTO_SUPPORT,
-            "Связь с командой\n\nНапиши своё сообщение:",
+            "<blockquote>Связь с командой</blockquote>\n\nНапиши своё сообщение:",
             cancel_keyboard("support"))
 
     elif data in KNOWLEDGE_BASE:
@@ -430,9 +430,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 _post("sendMessage", {
                     "chat_id": SUPPORT_CHAT,
                     "text": (
-                        f"◎ <b>Новое обращение</b>\n\n"
-                        f"От: {user.full_name} (@{user.username or '—'})\n"
-                        f"ID: <code>{user.id}</code>\n\n{text}"
+                        f"✉ Обращение\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"От: {user.full_name}\n"
+                        f"Telegram: @{user.username or '—'} (ID: {user.id})\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"{text}"
                     ),
                     "parse_mode": "HTML",
                 })
@@ -499,8 +502,8 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         text = (
             f"Оплата прошла!\n\n"
-            f"Не удалось активировать автоматически: {detail}\n\n"
-            f"Мы активируем подписку вручную в течение нескольких минут."
+            f"Аккаунт с адресом {email} пока не зарегистрирован на сайте. "
+            f"Подписка активируется автоматически как только ты войдёшь под этим аккаунтом на panacea.mom."
         )
 
     send_photo(chat_id, PHOTO_MAIN, text, confirm_keyboard())
@@ -511,12 +514,13 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
             _post("sendMessage", {
                 "chat_id": SUPPORT_CHAT,
                 "text": (
-                    f"★ <b>Новая оплата</b>\n\n"
-                    f"От: {user.full_name} (@{user.username or '—'})\n"
-                    f"ID: <code>{user.id}</code>\n"
-                    f"Email: <code>{email}</code>\n"
-                    f"Для себя: {'да' if payload.get('for_self') else 'нет'}\n"
-                    f"Сумма: {payment.total_amount} XTR\n"
+                    f"★ Новая оплата\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"От: {user.full_name}\n"
+                    f"Telegram: @{user.username or '—'} (ID: {user.id})\n"
+                    f"Email: {email}\n"
+                    f"Тип: {'для себя' if payload.get('for_self') else 'подарок'}\n"
+                    f"Сумма: {payment.total_amount} ★\n"
                     f"Firebase: {status}"
                 ),
                 "parse_mode": "HTML",
