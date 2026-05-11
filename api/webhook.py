@@ -104,8 +104,8 @@ CHANNEL_URL = "https://t.me/PanaceaPlus"
 YOUTUBE_URL = "https://www.youtube.com/@PanaceaChannel"
 
 PHOTO_MAIN    = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaAvatar.png"
-PHOTO_SUPPORT = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaAvatar.png"
-PHOTO_PLUS    = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaAvatar.png"
+PHOTO_SUPPORT = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaQuest.png"
+PHOTO_PLUS    = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaGift.png"
 
 STARS_PRICE = 1
 
@@ -453,7 +453,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "payload":      json.dumps({"for_self": for_self, "email": text}),
             "currency":     "XTR",
             "prices":       [{"label": "Panacea Plus", "amount": STARS_PRICE}],
-            "photo_url":    PHOTO_PLUS,
+            "photo_url":    "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaGift.png",
             "photo_width":  800,
             "photo_height": 800,
         })
