@@ -73,20 +73,14 @@ def _get_fb():
     return firestore.client()
 
 def activate_premium(email: str) -> tuple[bool, str]:
-    """Находит uid по email и записывает premium_status на 30 дней."""
     try:
         db = _get_fb()
         if not db:
             return False, "Firebase не инициализирован"
-
-        # Находим uid по email
         user = fb_auth.get_user_by_email(email)
         uid  = user.uid
-
-        now = int(__import__("time").time() * 1000)  # ms как в JS Date.now()
-        expires = now + 30 * 24 * 60 * 60 * 1000    # +30 дней в ms
-
-        # Пишем в sessions/{uid}/premium_status
+        now     = int(__import__("time").time() * 1000)
+        expires = now + 30 * 24 * 60 * 60 * 1000
         ref = db.collection("sessions").document(uid)\
                 .collection("list").document("premium_status")
         ref.set({
@@ -101,7 +95,7 @@ def activate_premium(email: str) -> tuple[bool, str]:
     except Exception as e:
         return False, str(e)
 
-
+# ─── Настройки ────────────────────────────────────────────────────────────────
 BOT_TOKEN    = os.environ["BOT_TOKEN"]
 SUPPORT_CHAT = os.environ.get("SUPPORT_CHAT_ID", "")
 
@@ -115,8 +109,7 @@ PHOTO_PLUS    = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/m
 
 STARS_PRICE = 1
 
-# Состояния
-STATE_SUPPORT = "support"
+STATE_SUPPORT   = "support"
 STATE_PLUS_SELF = "plus_self"
 STATE_PLUS_GIFT = "plus_gift"
 
@@ -134,11 +127,13 @@ def raw_keyboard(rows: list[list[dict]]) -> dict:
     return {"inline_keyboard": rows}
 
 # ─── Тексты ───────────────────────────────────────────────────────────────────
-WELCOME_TEXT = ""
+WELCOME_TEXT = " "
+
 SUPPORT_TEXT = "Справочный центр\n\nВыбери тему — и мы всё объясним:"
+
 PLUS_TEXT = (
-    "◈ <b>Panacea Plus</b>\n\n"
-    "<blockquote>Подписка, которая открывает полные возможности платформы.</blockquote>\n\n"
+    "<blockquote>Panacea Plus</blockquote>\n\n"
+    "Подписка, которая открывает полные возможности платформы.\n\n"
     "Что входит в Plus:\n"
     "· Оракул и Консилиум — эксклюзивные режимы для глубокой работы. Оракул сам выбирает наиболее подходящую модель под твой запрос, Консилиум даёт ответ сразу от всех шести моделей одновременно\n"
     "· Скачивание протоколов сеансов в PDF — полная запись диалога с саммари и выводами, которую можно передать модели в следующем сеансе\n"
@@ -165,11 +160,11 @@ KNOWLEDGE_BASE = {
         "text": (
             "<blockquote>Наши модели</blockquote>\n\n"
             "Каждая модель — отдельная система, обученная на определённой традиции знания. Все модели удерживают весь разговор целиком в рамках одного сеанса и могут рассматривать твой вопрос одновременно с десятков точек зрения.\n\n"
-            "Тара — таролог. Мастер традиционной школы тарологии. Каждый расклад — это разговор с символами, которые уже знают ответ. Помогает увидеть скрытое за поверхностью событий.\n\n"
-            "Карма — кармолог. Читает кармические узлы и незакрытые циклы. Там, где другие видят случайность, Карма находит закономерность. Специализируется на повторяющихся ситуациях и скрытых уроках судьбы.\n\n"
+            "Тара — таролог. Мастер традиционной школы тарологии. Каждый расклад — это разговор с символами, которые уже знают ответ.\n\n"
+            "Карма — кармолог. Читает кармические узлы и незакрытые циклы. Специализируется на повторяющихся ситуациях и скрытых уроках судьбы.\n\n"
             "Астра — астролог. Эксперт в области астрологии и натальных карт. Читает планетарные циклы как язык, на котором Вселенная говорит с каждым из нас.\n\n"
             "Ева — регрессолог. Проводник в глубинную память прошлых жизней. Помогает найти корень страхов, притяжений и повторяющихся сценариев.\n\n"
-            "Психея — юнгианский психолог и нарративный терапевт. Слушает не только слова, но и то, что стоит за ними. Помогает переосмыслить личную историю и найти в ней новый смысл.\n\n"
+            "Психея — юнгианский психолог и нарративный терапевт. Слушает не только слова, но и то, что стоит за ними.\n\n"
             "Гера — нумеролог. Видит скрытый порядок в числах. Даты, имена, повторяющиеся цифры — всё это части одного послания.\n\n"
             "Консилиум (Plus) — все шесть моделей отвечают одновременно. Шесть точек зрения на один вопрос."
         ),
@@ -181,7 +176,7 @@ KNOWLEDGE_BASE = {
             "I. Заполни анкету — укажи свой запрос, текущее состояние и другие параметры. Заполнять необязательно, но чем больше контекста — тем точнее подбор модели.\n\n"
             "II. Начни разговор. В любой момент можно сменить модель прямо в ходе сеанса — нажми на имя модели в левом верхнем углу чата. История при этом сохраняется.\n\n"
             "III. Получи ответ — не шаблонный, а сформированный под твой конкретный контекст. Чем больше ты рассказываешь — тем точнее и глубже ответ.\n\n"
-            "IV. По окончании забери протокол сеанса через меню в правом верхнем углу чата. Изучи самостоятельно или передай в начале следующего сеанса — модель учтёт весь предыдущий контекст.\n\n"
+            "IV. По окончании забери протокол сеанса через меню в правом верхнем углу чата. Изучи самостоятельно или передай в начале следующего сеанса.\n\n"
             "Если не знаешь с чего начать — выбери Оракул. Он сам проанализирует запрос и выберет наиболее подходящую модель."
         ),
     },
@@ -194,7 +189,7 @@ KNOWLEDGE_BASE = {
             "· Весь диалог целиком\n"
             "· Краткое саммари: вопрос, обсуждение, вывод\n"
             "· Список использованных моделей\n\n"
-            "Как скачать: нажми кнопку меню в правом верхнем углу чата → Сохранить историю сеанса.\n\n"
+            "Как скачать: нажми кнопку меню в правом верхнем углу чата — Сохранить историю сеанса.\n\n"
             "Протокол можно передать модели в начале следующего сеанса — она продолжит работу с того места, где вы остановились. Требует Panacea Plus."
         ),
     },
@@ -247,7 +242,7 @@ KNOWLEDGE_BASE = {
             "Архив — все прошлые сеансы и протоколы.\n"
             "Подписка — управление Panacea Plus.\n"
             "Профиль — настройки аккаунта.\n\n"
-            "Большинство карточек в приложении двусторонние — чтобы перевернуть карточку, нажми на её правый верхний угол. Например, главный экран: лицевая сторона — анкета, обратная — архив сеансов."
+            "Большинство карточек в приложении двусторонние — чтобы перевернуть карточку, нажми на её правый верхний угол."
         ),
     },
     "kb_privacy": {
@@ -255,11 +250,10 @@ KNOWLEDGE_BASE = {
         "text": (
             "<blockquote>Конфиденциальность</blockquote>\n\n"
             "Твои данные защищены современными технологиями шифрования и полностью обезличены. Мы не знаем ни твоего имени, ни других личных данных — только адрес электронной почты, привязанный к аккаунту.\n\n"
-            "Что мы делаем:\n"
             "· Данные не передаются третьим лицам\n"
             "· Сеансы хранятся только в твоём аккаунте\n"
             "· Команда проекта не читает твои сеансы\n\n"
-            "Модели обучаются исключительно на обезличенных данных — без имён, контактов и любой идентифицирующей информации. Если что-то вызывает вопросы — напиши нам через Связь с командой."
+            "Модели обучаются исключительно на обезличенных данных — без имён, контактов и любой идентифицирующей информации."
         ),
     },
     "kb_payment": {
@@ -270,129 +264,7 @@ KNOWLEDGE_BASE = {
             "Принимаемые криптовалюты:\n"
             "· USDT (TRC-20, ERC-20)\n"
             "· BTC · ETH · TON\n\n"
-            "В будущем появится оплата банковской картой. Пока что купить подписку через карту можно при личном обращении к команде — напиши через кнопку Связь с командой.\n\n"
-            "Если возникли проблемы с оплатой — попробуй другой кошелёк или сеть. Если не помогает — обратись к команде."
-        ),
-    },
-}
-        "text": (
-            "<blockquote>Что такое Panacea?</blockquote>\n\n"
-            "Panacea — это передовая разработка в области искусственного интеллекта и психологической терапии. Опыт всего человечества теперь доступен для улучшения ментального здоровья и качества жизни.\n\n"
-            "Продвинутые языковые модели, каждая из которых является экспертом в своей области, помогут найти ответ на любой вопрос. Каждый сеанс — это не гадание и не совет. Это зеркало. Модели не говорят тебе что делать — они помогают увидеть то, что ты уже знаешь, но ещё не сформулировал.\n\n"
-            "Мы небольшая команда инженеров и энтузиастов. Мы не контролируем то, что говорят модели, и не претендуем на истину в последней инстанции. Наша задача — обеспечить работу системы и продолжать её развивать."
-        ),
-    },
-    "kb_models": {
-        "title": "⬡ Наши модели",
-        "text": (
-            "<blockquote>Наши модели</blockquote>\n\n"
-            "Каждая модель — отдельная система, обученная на определённой традиции знания. Все модели удерживают весь разговор целиком в рамках одного сеанса и могут рассматривать твой вопрос одновременно с десятков точек зрения.\n\n"
-            "Тара — таролог. Мастер традиционной школы тарологии. Каждый расклад — это разговор с символами, которые уже знают ответ. Помогает увидеть скрытое за поверхностью событий.\n\n"
-            "Карма — кармолог. Читает кармические узлы и незакрытые циклы. Там, где другие видят случайность, Карма находит закономерность. Специализируется на повторяющихся ситуациях и скрытых уроках судьбы.\n\n"
-            "Астра — астролог. Эксперт в области астрологии и натальных карт. Читает планетарные циклы как язык, на котором Вселенная говорит с каждым из нас.\n\n"
-            "Ева — регрессолог. Проводник в глубинную память прошлых жизней. Помогает найти корень страхов, притяжений и повторяющихся сценариев.\n\n"
-            "Психея — юнгианский психолог и нарративный терапевт. Слушает не только слова, но и то, что стоит за ними. Помогает переосмыслить личную историю и найти в ней новый смысл.\n\n"
-            "Гера — нумеролог. Видит скрытый порядок в числах. Даты, имена, повторяющиеся цифры — всё это части одного послания.\n\n"
-            "Консилиум (Plus) — все шесть моделей отвечают одновременно. Шесть точек зрения на один вопрос."
-        ),
-    },
-    "kb_how": {
-        "title": "▷ Как начать сеанс?",
-        "text": (
-            "<blockquote>Как начать сеанс?</blockquote>\n\n"
-            "I. Заполни анкету — укажи свой запрос, текущее состояние и другие параметры. Заполнять необязательно, но чем больше контекста — тем точнее подбор модели.\n\n"
-            "II. Начни разговор. В любой момент можно сменить модель прямо в ходе сеанса — нажми на имя модели в левом верхнем углу чата. История при этом сохраняется.\n\n"
-            "III. Получи ответ — не шаблонный, а сформированный под твой конкретный контекст. Чем больше ты рассказываешь — тем точнее и глубже ответ.\n\n"
-            "IV. По окончании забери протокол сеанса через меню в правом верхнем углу чата. Изучи самостоятельно или передай в начале следующего сеанса — модель учтёт весь предыдущий контекст.\n\n"
-            "Если не знаешь с чего начать — выбери Оракул. Он сам проанализирует запрос и выберет наиболее подходящую модель."
-        ),
-    },
-    "kb_protocol": {
-        "title": "▤ Протокол сеанса",
-        "text": (
-            "<blockquote>Протокол сеанса</blockquote>\n\n"
-            "После каждого сеанса можно скачать его полную запись в формате PDF. Протокол генерируется на основе диалога — AI составляет краткое саммари с ключевыми выводами.\n\n"
-            "Что содержит протокол:\n"
-            "· Весь диалог целиком\n"
-            "· Краткое саммари: вопрос, обсуждение, вывод\n"
-            "· Список использованных моделей\n\n"
-            "Как скачать: нажми кнопку меню в правом верхнем углу чата → Сохранить историю сеанса.\n\n"
-            "Протокол можно передать модели в начале следующего сеанса — она продолжит работу с того места, где вы остановились. Требует Panacea Plus."
-        ),
-    },
-    "kb_archive": {
-        "title": "▦ Архив сеансов",
-        "text": (
-            "<blockquote>Архив сеансов</blockquote>\n\n"
-            "Все твои прошлые сеансы хранятся в личном архиве. Главный экран приложения — это двусторонняя карточка. Лицевая сторона — анкета для нового сеанса. Обратная — архив.\n\n"
-            "Как открыть архив: нажми иконку в правом верхнем углу карточки — она перевернётся.\n\n"
-            "В архиве ты найдёшь список всех сеансов с датами, количеством сообщений и использованными моделями. Нажми на сеанс — откроется чат с восстановленной историей. Кнопка со свитком справа от каждого сеанса — скачать протокол PDF.\n\n"
-            "Долгое нажатие на карточку сеанса — удалить. Удаление необратимо.\n\n"
-            "Без Panacea Plus история удаляется через 24 часа. С подпиской — хранится бессрочно."
-        ),
-    },
-    "kb_login": {
-        "title": "◎ Вход в аккаунт",
-        "text": (
-            "<blockquote>Вход в аккаунт</blockquote>\n\n"
-            "Регистрации как таковой нет — войти можно в один клик на экране входа.\n\n"
-            "Способы входа:\n"
-            "· Google — войти через аккаунт Google\n"
-            "· Apple — войти через Apple ID\n"
-            "· Гость — без аккаунта, история сохраняется на 24 часа\n\n"
-            "В гостевом режиме архив, протоколы и синхронизация между устройствами недоступны. История удаляется через 24 часа автоматически.\n\n"
-            "После входа откроется анкета — заполнять необязательно, но помогает подобрать модель точнее. Если возникли проблемы со входом — попробуй другой браузер или очисти кэш."
-        ),
-    },
-    "kb_plus": {
-        "title": "◈ Panacea Plus",
-        "text": (
-            "<blockquote>Panacea Plus</blockquote>\n\n"
-            "Подписка, которая открывает полные возможности платформы.\n\n"
-            "Что входит в Plus:\n"
-            "· Оракул и Консилиум — эксклюзивные режимы. Оракул сам выбирает модель под запрос, Консилиум даёт ответ от всех шести моделей одновременно\n"
-            "· Скачивание протоколов сеансов в PDF\n"
-            "· История не удаляется через 24 часа — хранится бессрочно\n"
-            "· Голосовой ввод и озвучивание ответов\n"
-            "· Интерактивные тесты в ходе разговора\n"
-            "· Без ограничений на количество сеансов\n\n"
-            "Оформить подписку можно прямо здесь или в разделе Подписка на сайте."
-        ),
-    },
-    "kb_nav": {
-        "title": "⊹ Навигация по сайту",
-        "text": (
-            "<blockquote>Навигация по сайту</blockquote>\n\n"
-            "Сайт panacea.mom состоит из нескольких разделов, доступных через меню.\n\n"
-            "Главная — описание проекта и список моделей.\n"
-            "Сеанс — здесь начинается разговор. Заполни анкету и выбери модель.\n"
-            "Архив — все прошлые сеансы и протоколы.\n"
-            "Подписка — управление Panacea Plus.\n"
-            "Профиль — настройки аккаунта.\n\n"
-            "Большинство карточек в приложении двусторонние — чтобы перевернуть карточку, нажми на её правый верхний угол. Например, главный экран: лицевая сторона — анкета, обратная — архив сеансов."
-        ),
-    },
-    "kb_privacy": {
-        "title": "⊘ Конфиденциальность",
-        "text": (
-            "<blockquote>Конфиденциальность</blockquote>\n\n"
-            "Твои данные защищены современными технологиями шифрования и полностью обезличены. Мы не знаем ни твоего имени, ни других личных данных — только адрес электронной почты, привязанный к аккаунту.\n\n"
-            "Что мы делаем:\n"
-            "· Данные не передаются третьим лицам\n"
-            "· Сеансы хранятся только в твоём аккаунте\n"
-            "· Команда проекта не читает твои сеансы\n\n"
-            "Модели обучаются исключительно на обезличенных данных — без имён, контактов и любой идентифицирующей информации. Если что-то вызывает вопросы — напиши нам через Связь с командой."
-        ),
-    },
-    "kb_payment": {
-        "title": "◻ Оплата",
-        "text": (
-            "<blockquote>Оплата</blockquote>\n\n"
-            "На данный момент оплата принимается в криптовалюте и через Telegram Stars прямо в этом боте.\n\n"
-            "Принимаемые криптовалюты:\n"
-            "· USDT (TRC-20, ERC-20)\n"
-            "· BTC · ETH · TON\n\n"
-            "В будущем появится оплата банковской картой. Пока что купить подписку через карту можно при личном обращении к команде — напиши через кнопку Связь с командой.\n\n"
+            "В будущем появится оплата банковской картой. Пока что купить подписку через карту можно при личном обращении к команде.\n\n"
             "Если возникли проблемы с оплатой — попробуй другой кошелёк или сеть. Если не помогает — обратись к команде."
         ),
     },
@@ -421,15 +293,18 @@ def plus_keyboard() -> dict:
 
 def support_keyboard() -> dict:
     rows = []
-    main_items = list(KNOWLEDGE_BASE.items())
-    for i in range(0, len(main_items), 2):
-        row = [btn(main_items[i][1]["title"], callback_data=main_items[i][0])]
-        if i + 1 < len(main_items):
-            row.append(btn(main_items[i+1][1]["title"], callback_data=main_items[i+1][0]))
+    items = list(KNOWLEDGE_BASE.items())
+    for i in range(0, len(items), 2):
+        row = [btn(items[i][1]["title"], callback_data=items[i][0])]
+        if i + 1 < len(items):
+            row.append(btn(items[i+1][1]["title"], callback_data=items[i+1][0]))
         rows.append(row)
     rows.append([btn("Связь с командой", callback_data="contact", style="success")])
     rows.append([btn("← Назад", callback_data="back_main", style="primary")])
     return raw_keyboard(rows)
+
+def article_keyboard() -> dict:
+    return raw_keyboard([[btn("← Назад", callback_data="support", style="primary")]])
 
 def plus_article_keyboard() -> dict:
     return raw_keyboard([
@@ -439,24 +314,6 @@ def plus_article_keyboard() -> dict:
         ],
         [btn("← Назад", callback_data="support", style="primary")],
     ])
-
-def support_keyboard() -> dict:
-    rows = []
-    main_items = [(k, v) for k, v in KNOWLEDGE_BASE.items() if k != "kb_tech"]
-    for i in range(0, len(main_items), 2):
-        row = [btn(main_items[i][1]["title"], callback_data=main_items[i][0])]
-        if i + 1 < len(main_items):
-            row.append(btn(main_items[i+1][1]["title"], callback_data=main_items[i+1][0]))
-        rows.append(row)
-    rows.append([
-        btn("⚙ Технические вопросы", callback_data="kb_tech"),
-        btn("◎ Связь с командой", callback_data="contact"),
-    ])
-    rows.append([btn("← Назад", callback_data="back_main", style="primary")])
-    return raw_keyboard(rows)
-
-def article_keyboard() -> dict:
-    return raw_keyboard([[btn("← Назад", callback_data="support", style="primary")]])
 
 def confirm_keyboard() -> dict:
     return raw_keyboard([[btn("← В главное меню", callback_data="back_main", style="primary")]])
@@ -486,15 +343,9 @@ def edit_photo(chat_id: int, message_id: int, photo: str, caption: str, keyboard
     _post("editMessageMedia", {
         "chat_id": chat_id, "message_id": message_id,
         "media": {"type": "photo", "media": photo,
-                  "caption": caption, "parse_mode": "HTML"},
+                  "caption": caption or " ", "parse_mode": "HTML"},
         "reply_markup": keyboard,
     })
-
-def send_text(chat_id: int, text: str, keyboard: dict = None) -> dict:
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
-    if keyboard:
-        payload["reply_markup"] = keyboard
-    return _post("sendMessage", payload)
 
 def delete_msg(chat_id: int, message_id: int):
     try:
@@ -506,7 +357,6 @@ def delete_msg(chat_id: int, message_id: int):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     redis_del(f"state:{chat_id}")
-    # Удаляем команду /start
     try:
         delete_msg(chat_id, update.message.message_id)
     except Exception:
@@ -519,9 +369,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     data    = query.data
     chat_id = query.message.chat_id
     msg_id  = query.message.message_id
-
-    # Отладка — пишем последнее нажатие в Redis
-    redis_set(f"last_btn:{chat_id}", data, ex=300)
 
     if data == "back_main":
         redis_del(f"state:{chat_id}")
@@ -538,47 +385,36 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif data == "plus_self":
         redis_set(f"state:{chat_id}", STATE_PLUS_SELF)
         edit_photo(chat_id, msg_id, PHOTO_PLUS,
-            "◎ <b>Подписка для себя</b>\n\n"
-            "Укажи email, который используешь для входа на panacea.mom:",
+            "Подписка для себя\n\nУкажи email, который используешь для входа на panacea.mom:",
             cancel_keyboard("plus"))
 
     elif data == "plus_gift":
         redis_set(f"state:{chat_id}", STATE_PLUS_GIFT)
         edit_photo(chat_id, msg_id, PHOTO_PLUS,
-            "◎ <b>Подписка в подарок</b>\n\n"
-            "Укажи email друга, который он использует для входа на panacea.mom:",
+            "Подписка в подарок\n\nУкажи email друга, который он использует для входа на panacea.mom:",
             cancel_keyboard("plus"))
 
     elif data == "contact":
         redis_set(f"state:{chat_id}", STATE_SUPPORT)
         edit_photo(chat_id, msg_id, PHOTO_SUPPORT,
-            "◎ <b>Связь с командой</b>\n\n"
-            "Напиши своё сообщение:",
+            "Связь с командой\n\nНапиши своё сообщение:",
             cancel_keyboard("support"))
 
     elif data in KNOWLEDGE_BASE:
         kb = plus_article_keyboard() if data == "kb_plus" else article_keyboard()
-        edit_photo(chat_id, msg_id, PHOTO_SUPPORT,
-                   KNOWLEDGE_BASE[data]["text"], kb)
+        edit_photo(chat_id, msg_id, PHOTO_SUPPORT, KNOWLEDGE_BASE[data]["text"], kb)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обрабатываем любой текст от пользователя согласно состоянию в Redis."""
     msg     = update.message
     chat_id = msg.chat_id
     text    = msg.text.strip()
     user    = update.effective_user
+    state   = redis_get(f"state:{chat_id}")
 
-    state = redis_get(f"state:{chat_id}")
-
-    # Логируем факт вызова
-    redis_set(f"last_text:{chat_id}", f"state={state}|text={text[:30]}", ex=300)
-
-    # Удаляем сообщение пользователя
     delete_msg(chat_id, msg.message_id)
 
     if state == STATE_SUPPORT:
         redis_del(f"state:{chat_id}")
-        # Пересылаем команде
         if SUPPORT_CHAT:
             try:
                 _post("sendMessage", {
@@ -593,7 +429,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             except Exception:
                 pass
         send_photo(chat_id, PHOTO_MAIN,
-                   "✦ Сообщение отправлено. Мы ответим в ближайшее время.",
+                   "Сообщение отправлено. Мы ответим в ближайшее время.",
                    confirm_keyboard())
 
     elif state in (STATE_PLUS_SELF, STATE_PLUS_GIFT):
@@ -612,61 +448,22 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "photo_height": 800,
         })
 
-    # Если состояния нет — игнорируем
-
 async def stars_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Тестовый счёт на 5 звёзд."""
     chat_id = update.effective_chat.id
-    result = _post("sendInvoice", {
+    _post("sendInvoice", {
         "chat_id":     chat_id,
         "title":       "Тест Stars",
-        "description": "Тестовый платёж — 5 звёзд",
+        "description": "Тестовый платёж — 1 звезда",
         "payload":     json.dumps({"test": True}),
         "currency":    "XTR",
-        "prices":      [{"label": "Тест", "amount": 5}],
+        "prices":      [{"label": "Тест", "amount": 1}],
     })
-    ok = result.get("ok", False)
-    if SUPPORT_CHAT:
-        try:
-            _post("sendMessage", {
-                "chat_id": SUPPORT_CHAT,
-                "text": f"★ /stars: {'счёт создан' if ok else 'ошибка — ' + str(result.get('description'))}",
-                "parse_mode": "HTML",
-            })
-        except Exception:
-            pass
 
 async def state_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
-    # Пробуем записать и прочитать тестовое значение
-    test_key = f"test:{chat_id}"
-    write_err = ""
-    read_err = ""
-    try:
-        r = _redis()
-        if r:
-            r.set(test_key, "ok", ex=60)
-        else:
-            write_err = "redis() вернул None"
-    except Exception as e:
-        write_err = str(e)
-
-    try:
-        val = redis_get(test_key)
-    except Exception as e:
-        val = None
-        read_err = str(e)
-
-    state = redis_get(f"state:{chat_id}")
-    last_btn = redis_get(f"last_btn:{chat_id}")
-    last_text = redis_get(f"last_text:{chat_id}")
+    state   = redis_get(f"state:{chat_id}")
     await update.message.reply_text(
         f"KV_REDIS_URL: <code>{'задан' if REDIS_URL else 'НЕТ'}</code>\n"
-        f"write_err: <code>{write_err or 'нет'}</code>\n"
-        f"read_err: <code>{read_err or 'нет'}</code>\n"
-        f"test read: <code>{val}</code>\n"
-        f"last_btn: <code>{last_btn or 'нет'}</code>\n"
-        f"last_text: <code>{last_text or 'нет'}</code>\n"
         f"state: <code>{state or 'нет'}</code>",
         parse_mode="HTML"
     )
@@ -681,20 +478,18 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user    = update.effective_user
     chat_id = update.effective_chat.id
 
-    # Активируем подписку в Firebase
     ok, detail = activate_premium(email) if email else (False, "email не передан")
 
     if ok:
         text = (
-            f"✦ <b>Оплата прошла!</b>\n\n"
-            f"Подписка Panacea Plus активирована на аккаунт "
-            f"<code>{email}</code>.\n\n"
+            f"Оплата прошла!\n\n"
+            f"Подписка Panacea Plus активирована на аккаунт {email}.\n\n"
             f"Обнови страницу сайта — изменения уже применены."
         )
     else:
         text = (
-            f"✦ <b>Оплата прошла!</b>\n\n"
-            f"Не удалось активировать автоматически: <code>{detail}</code>\n\n"
+            f"Оплата прошла!\n\n"
+            f"Не удалось активировать автоматически: {detail}\n\n"
             f"Мы активируем подписку вручную в течение нескольких минут."
         )
 
@@ -702,7 +497,7 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if SUPPORT_CHAT:
         try:
-            status = "✅ активирована" if ok else f"❌ ошибка: {detail}"
+            status = "активирована" if ok else f"ошибка: {detail}"
             _post("sendMessage", {
                 "chat_id": SUPPORT_CHAT,
                 "text": (
