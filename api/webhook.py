@@ -434,61 +434,78 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    import io
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import io, os
+
+    # Регистрируем шрифт с кириллицей
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+    ]
+    regular = next((p for p in font_paths if "Bold" not in p and os.path.exists(p)), None)
+    bold    = next((p for p in font_paths if "Bold" in p and os.path.exists(p)), None)
+
+    if regular:
+        pdfmetrics.registerFont(TTFont("DejaVu", regular))
+        fn, fn_bold = "DejaVu", "DejaVu"
+    else:
+        fn, fn_bold = "Helvetica", "Helvetica-Bold"
+    if bold:
+        pdfmetrics.registerFont(TTFont("DejaVu-Bold", bold))
+        fn_bold = "DejaVu-Bold"
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=2*cm, bottomMargin=2*cm)
 
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('title', fontSize=20, alignment=TA_CENTER,
-                                 spaceAfter=6, fontName='Helvetica-Bold')
+    title_style = ParagraphStyle('title', fontSize=22, alignment=TA_CENTER,
+                                 spaceAfter=4, fontName=fn_bold)
     sub_style   = ParagraphStyle('sub', fontSize=11, alignment=TA_CENTER,
-                                 spaceAfter=20, textColor=colors.grey)
-    label_style = ParagraphStyle('label', fontSize=10, textColor=colors.grey,
-                                 fontName='Helvetica')
-    value_style = ParagraphStyle('value', fontSize=12, fontName='Helvetica-Bold',
-                                 spaceAfter=12)
+                                 spaceAfter=20, textColor=colors.HexColor("#888888"),
+                                 fontName=fn)
+    footer_style = ParagraphStyle('footer', fontSize=9, alignment=TA_CENTER,
+                                  textColor=colors.HexColor("#aaaaaa"), fontName=fn)
 
     story = [
         Paragraph("Panacea", title_style),
         Paragraph("Квитанция об оплате", sub_style),
-        HRFlowable(width="100%", thickness=1, color=colors.lightgrey),
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e0e0e0")),
         Spacer(1, 0.5*cm),
     ]
 
     rows = [
-        ("Продукт",      "Panacea Plus — 1 месяц"),
-        ("Сумма",        f"{amount} Telegram Stars"),
-        ("Email",        email),
-        ("Тип",          "Для себя" if for_self else "Подарок"),
-        ("Дата оплаты",  paid_at),
-        ("Покупатель",   tg_user),
-        ("Статус",       "Оплачено"),
+        ("Продукт",       "Panacea Plus — 1 месяц"),
+        ("Сумма",         f"{amount} Telegram Stars"),
+        ("Email",         email),
+        ("Тип",           "Для себя" if for_self else "Подарок"),
+        ("Дата оплаты",   paid_at),
+        ("Покупатель",    tg_user),
+        ("Статус",        "Оплачено"),
     ]
 
     table = Table(rows, colWidths=[5*cm, 11*cm])
     table.setStyle(TableStyle([
-        ('FONTNAME',    (0,0), (-1,-1), 'Helvetica'),
-        ('FONTNAME',    (0,0), (0,-1), 'Helvetica-Bold'),
-        ('FONTSIZE',    (0,0), (-1,-1), 11),
-        ('TEXTCOLOR',   (0,0), (0,-1), colors.grey),
-        ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.whitesmoke, colors.white]),
-        ('TOPPADDING',  (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
-        ('GRID',        (0,0), (-1,-1), 0.5, colors.lightgrey),
-        ('ROUNDEDCORNERS', [4]),
+        ('FONTNAME',       (0,0), (-1,-1), fn),
+        ('FONTNAME',       (0,0), (0,-1), fn_bold),
+        ('FONTSIZE',       (0,0), (-1,-1), 11),
+        ('TEXTCOLOR',      (0,0), (0,-1), colors.HexColor("#888888")),
+        ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.HexColor("#f7f7f7"), colors.white]),
+        ('TOPPADDING',     (0,0), (-1,-1), 9),
+        ('BOTTOMPADDING',  (0,0), (-1,-1), 9),
+        ('LEFTPADDING',    (0,0), (-1,-1), 12),
+        ('GRID',           (0,0), (-1,-1), 0.5, colors.HexColor("#e0e0e0")),
     ]))
 
     story.append(table)
     story.append(Spacer(1, 1*cm))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.lightgrey))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e0e0e0")))
     story.append(Spacer(1, 0.3*cm))
-    story.append(Paragraph("panacea.mom", ParagraphStyle('footer', fontSize=9,
-                            alignment=TA_CENTER, textColor=colors.grey)))
+    story.append(Paragraph("panacea.mom", footer_style))
 
     doc.build(story)
     return buf.getvalue()
@@ -745,23 +762,37 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Подписка активируется автоматически как только ты войдёшь под этим аккаунтом на panacea.mom."
         )
 
-    result = send_photo(chat_id, PHOTO_MAIN, text, confirm_keyboard())
-    new_msg_id = result.get("result", {}).get("message_id")
-    if new_msg_id:
-        redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
-
-    # Отправляем PDF-квитанцию отдельным сообщением
+    # Отправляем PDF-квитанцию и получаем ссылку для кнопки
+    receipt_url = None
     try:
         import datetime
         paid_at = datetime.datetime.utcnow().strftime("%d.%m.%Y %H:%M UTC")
         tg_user = f"{user.full_name} (@{user.username or '—'})"
         pdf_bytes = generate_receipt_pdf(email, payload.get("for_self", True),
                                          payment.total_amount, paid_at, tg_user)
-        _post_file("sendDocument", chat_id, pdf_bytes,
+        doc_result = _post_file("sendDocument", chat_id, pdf_bytes,
                    f"receipt_{chat_id}.pdf", "application/pdf",
                    "Квитанция об оплате Panacea Plus")
-    except Exception as e:
+        # Получаем прямую ссылку на файл
+        file_id = doc_result.get("result", {}).get("document", {}).get("file_id")
+        if file_id:
+            file_info = _post("getFile", {"file_id": file_id})
+            file_path = file_info.get("result", {}).get("file_path")
+            if file_path:
+                receipt_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+    except Exception:
         pass
+
+    # Обновляем сообщение об оплате — добавляем кнопку квитанции если есть ссылка
+    receipt_keyboard = raw_keyboard([
+        [btn("Скачать квитанцию", url=receipt_url)] if receipt_url else [],
+        [btn("← В главное меню", callback_data="back_main", style="primary")],
+    ]) if receipt_url else confirm_keyboard()
+
+    result = send_photo(chat_id, PHOTO_MAIN, text, receipt_keyboard)
+    new_msg_id = result.get("result", {}).get("message_id")
+    if new_msg_id:
+        redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
 
     if SUPPORT_CHAT:
         try:
