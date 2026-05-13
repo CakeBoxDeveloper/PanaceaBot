@@ -383,6 +383,31 @@ def delete_msg(chat_id: int, message_id: int):
     except Exception:
         pass
 
+def _post_file(method: str, chat_id: int, file_bytes: bytes,
+               filename: str, mime: str, caption: str = "") -> dict:
+    """Отправка файла через multipart/form-data."""
+    import urllib.request
+    boundary = "----PanaceaBoundary"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
+        f"{chat_id}\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="caption"\r\n\r\n'
+        f"{caption}\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="document"; filename="{filename}"\r\n'
+        f"Content-Type: {mime}\r\n\r\n"
+    ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
+
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    with urlreq.urlopen(req) as r:
+        return json.loads(r.read())
+
 # ─── Логирование в канал ──────────────────────────────────────────────────────
 PHOTO_LOG_MESSAGE = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Message.png"
 PHOTO_LOG_PAYMENT = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Payment.png"
@@ -401,10 +426,77 @@ def log_to_channel(photo: str, text: str):
     except Exception:
         pass
 
-def _send_invoice(chat_id: int, email: str, for_self: bool):
+def generate_receipt_pdf(email: str, for_self: bool, amount: int,
+                         paid_at: str, tg_user: str) -> bytes:
+    """Генерирует PDF-квитанцию и возвращает байты."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    import io
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('title', fontSize=20, alignment=TA_CENTER,
+                                 spaceAfter=6, fontName='Helvetica-Bold')
+    sub_style   = ParagraphStyle('sub', fontSize=11, alignment=TA_CENTER,
+                                 spaceAfter=20, textColor=colors.grey)
+    label_style = ParagraphStyle('label', fontSize=10, textColor=colors.grey,
+                                 fontName='Helvetica')
+    value_style = ParagraphStyle('value', fontSize=12, fontName='Helvetica-Bold',
+                                 spaceAfter=12)
+
+    story = [
+        Paragraph("Panacea", title_style),
+        Paragraph("Квитанция об оплате", sub_style),
+        HRFlowable(width="100%", thickness=1, color=colors.lightgrey),
+        Spacer(1, 0.5*cm),
+    ]
+
+    rows = [
+        ("Продукт",      "Panacea Plus — 1 месяц"),
+        ("Сумма",        f"{amount} Telegram Stars"),
+        ("Email",        email),
+        ("Тип",          "Для себя" if for_self else "Подарок"),
+        ("Дата оплаты",  paid_at),
+        ("Покупатель",   tg_user),
+        ("Статус",       "Оплачено"),
+    ]
+
+    table = Table(rows, colWidths=[5*cm, 11*cm])
+    table.setStyle(TableStyle([
+        ('FONTNAME',    (0,0), (-1,-1), 'Helvetica'),
+        ('FONTNAME',    (0,0), (0,-1), 'Helvetica-Bold'),
+        ('FONTSIZE',    (0,0), (-1,-1), 11),
+        ('TEXTCOLOR',   (0,0), (0,-1), colors.grey),
+        ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.whitesmoke, colors.white]),
+        ('TOPPADDING',  (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('GRID',        (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ('ROUNDEDCORNERS', [4]),
+    ]))
+
+    story.append(table)
+    story.append(Spacer(1, 1*cm))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.lightgrey))
+    story.append(Spacer(1, 0.3*cm))
+    story.append(Paragraph("panacea.mom", ParagraphStyle('footer', fontSize=9,
+                            alignment=TA_CENTER, textColor=colors.grey)))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
     result = _post("sendInvoice", {
         "chat_id":      chat_id,
-        "title":        "🔑 Panacea Plus · 1 месяц",
+        "title":        "🔑 Подписка Panacea Plus на 1 месяц для:",
         "description":  email,
         "payload":      json.dumps({"for_self": for_self, "email": email}),
         "currency":     "XTR",
@@ -656,6 +748,19 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     new_msg_id = result.get("result", {}).get("message_id")
     if new_msg_id:
         redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
+
+    # Отправляем PDF-квитанцию отдельным сообщением
+    try:
+        import datetime
+        paid_at = datetime.datetime.utcnow().strftime("%d.%m.%Y %H:%M UTC")
+        tg_user = f"{user.full_name} (@{user.username or '—'})"
+        pdf_bytes = generate_receipt_pdf(email, payload.get("for_self", True),
+                                         payment.total_amount, paid_at, tg_user)
+        _post_file("sendDocument", chat_id, pdf_bytes,
+                   f"receipt_{chat_id}.pdf", "application/pdf",
+                   "Квитанция об оплате Panacea Plus")
+    except Exception as e:
+        pass
 
     if SUPPORT_CHAT:
         try:
