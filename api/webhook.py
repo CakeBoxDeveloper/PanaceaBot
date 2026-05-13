@@ -620,7 +620,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Если ты уже писал нам ранее, не нужно отправлять повторное сообщение — мы обязательно ответим.",
             cancel_keyboard("support"))
 
-    elif data == "email_confirm_proceed":
+    elif data.startswith("save_receipt:"):
+        # Пересылаем квитанцию в Saved Messages (chat_id == user_id в личке)
+        receipt_msg_id = data.split(":", 1)[1]
+        try:
+            _post("forwardMessage", {
+                "chat_id":      chat_id,        # Saved Messages = свой chat_id
+                "from_chat_id": chat_id,
+                "message_id":   int(receipt_msg_id),
+            })
+            await query.answer("Квитанция сохранена в Избранное", show_alert=False)
+        except Exception:
+            await query.answer("Не удалось сохранить", show_alert=False)
+        return
         # Пользователь подтвердил — выставляем инвойс
         state = redis_get(f"state:{chat_id}")
         email = redis_get(f"pending_email:{chat_id}")
@@ -759,8 +771,8 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Подписка активируется автоматически как только ты войдёшь под этим аккаунтом на panacea.mom."
         )
 
-    # Генерируем PDF и получаем ссылку для кнопки (не отправляем отдельным сообщением)
-    receipt_url = None
+    # Генерируем и отправляем PDF
+    receipt_msg_id = None
     try:
         import datetime
         paid_at = datetime.datetime.utcnow().strftime("%d.%m.%Y %H:%M UTC")
@@ -768,28 +780,23 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         pdf_bytes = generate_receipt_pdf(email, payload.get("for_self", True),
                                          payment.total_amount, paid_at, tg_user)
         doc_result = _post_file("sendDocument", chat_id, pdf_bytes,
-                   f"receipt_{chat_id}.pdf", "application/pdf", "")
-        # Сразу удаляем — нам нужна только ссылка
-        doc_msg_id = doc_result.get("result", {}).get("message_id")
-        file_id = doc_result.get("result", {}).get("document", {}).get("file_id")
-        if doc_msg_id:
-            delete_msg(chat_id, doc_msg_id)
-        if file_id:
-            file_info = _post("getFile", {"file_id": file_id})
-            file_path = file_info.get("result", {}).get("file_path")
-            if file_path:
-                receipt_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+                   f"receipt_{chat_id}.pdf", "application/pdf",
+                   "Квитанция об оплате Panacea Plus")
+        receipt_msg_id = doc_result.get("result", {}).get("message_id")
     except Exception:
         pass
 
-    # Клавиатура — "Назад" слева, "Скачать квитанцию" справа (зелёная)
-    if receipt_url:
+    # Клавиатура — "Назад" слева, "Сохранить в избранное" справа (зелёная)
+    if receipt_msg_id:
+        # Кнопка пересылает PDF в Saved Messages
         receipt_keyboard = raw_keyboard([
             [
                 btn("← В главное меню", callback_data="back_main", style="primary"),
-                btn("Скачать квитанцию", url=receipt_url, style="success"),
+                btn("Сохранить квитанцию", callback_data=f"save_receipt:{receipt_msg_id}", style="success"),
             ],
         ])
+        # Сохраняем msg_id квитанции в Redis чтобы потом переслать
+        redis_set(f"receipt_msg:{chat_id}", str(receipt_msg_id), ex=86400)
     else:
         receipt_keyboard = confirm_keyboard()
 
