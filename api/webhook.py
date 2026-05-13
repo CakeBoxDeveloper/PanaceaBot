@@ -503,8 +503,6 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
 
     story = [
         Paragraph("Panacea", title_style),
-        Paragraph("Квитанция об оплате", sub_style),
-        HRFlowable(width="100%", thickness=1, color=LINE),
         Spacer(1, 0.5*cm),
     ]
 
@@ -538,8 +536,6 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
 
     story.append(table)
     story.append(Spacer(1, 1*cm))
-    story.append(HRFlowable(width="100%", thickness=1, color=LINE))
-    story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("panacea.mom", footer_style))
 
     doc.build(story, onFirstPage=bg_canvas, onLaterPages=bg_canvas)
@@ -823,10 +819,7 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # Клавиатура
         receipt_keyboard = raw_keyboard([
-            [
-                btn("← В главное меню", callback_data="back_main", style="primary"),
-                btn("Сохранить квитанцию", callback_data="save_receipt_self", style="success"),
-            ],
+            [btn("← В главное меню", callback_data="back_main", style="primary")],
         ])
 
         # Отправляем документ с caption = текст об оплате + кнопки
