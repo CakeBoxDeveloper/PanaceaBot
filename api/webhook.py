@@ -621,18 +621,18 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             cancel_keyboard("support"))
 
     elif data.startswith("save_receipt:"):
-        # Пересылаем квитанцию в Saved Messages (chat_id == user_id в личке)
         receipt_msg_id = data.split(":", 1)[1]
         try:
             _post("forwardMessage", {
-                "chat_id":      chat_id,        # Saved Messages = свой chat_id
+                "chat_id":      chat_id,
                 "from_chat_id": chat_id,
                 "message_id":   int(receipt_msg_id),
             })
             await query.answer("Квитанция сохранена в Избранное", show_alert=False)
         except Exception:
             await query.answer("Не удалось сохранить", show_alert=False)
-        return
+
+    elif data == "email_confirm_proceed":
         # Пользователь подтвердил — выставляем инвойс
         state = redis_get(f"state:{chat_id}")
         email = redis_get(f"pending_email:{chat_id}")
@@ -644,7 +644,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             _send_invoice(chat_id, email, for_self)
 
     elif data == "email_confirm_back":
-        # Назад — возвращаем к вводу email
         state = redis_get(f"state:{chat_id}")
         for_self = state == STATE_CONFIRM_SELF
         redis_del(f"state:{chat_id}")
@@ -656,10 +655,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if for_self else
             "<blockquote>Подписка в подарок</blockquote>\n\nУкажи email друга, который он использует для входа на panacea.mom:",
             cancel_keyboard("plus"))
-        kb = plus_article_keyboard() if data == "kb_plus" else article_keyboard()
-        edit_photo(chat_id, msg_id, PHOTO_SUPPORT, KNOWLEDGE_BASE[data]["text"], kb)
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    elif data in KNOWLEDGE_BASE:async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg     = update.message
     chat_id = msg.chat_id
     text    = msg.text.strip()
@@ -813,8 +810,8 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     log_caption = (
         f"Имя: {user.full_name}\n"
-        f"<blockquote>@{user.username or '—'} · ID {user.id}</blockquote>\n"
-        f"{email} ({'для себя' if for_self else 'в подарок'})\n"
+        f"@{user.username or '—'} · ID {user.id}\n"
+        f"<blockquote>{email} ({'для себя' if for_self else 'в подарок'})</blockquote>\n"
         f"{payment.total_amount} ★"
     )
     if firebase_error:
