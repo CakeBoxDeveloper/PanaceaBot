@@ -433,81 +433,91 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
     from reportlab.lib.units import cm
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     import io, os
 
-    # Регистрируем шрифт с кириллицей
-    font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-    ]
-    regular = next((p for p in font_paths if "Bold" not in p and os.path.exists(p)), None)
-    bold    = next((p for p in font_paths if "Bold" in p and os.path.exists(p)), None)
+    base = os.path.dirname(__file__)
+    regular_path = os.path.join(base, "RobotoRegular.ttf")
+    bold_path    = os.path.join(base, "RobotoBold.ttf")
 
-    if regular:
-        pdfmetrics.registerFont(TTFont("DejaVu", regular))
-        fn, fn_bold = "DejaVu", "DejaVu"
-    else:
-        fn, fn_bold = "Helvetica", "Helvetica-Bold"
-    if bold:
-        pdfmetrics.registerFont(TTFont("DejaVu-Bold", bold))
-        fn_bold = "DejaVu-Bold"
+    fn, fn_bold = "Helvetica", "Helvetica-Bold"
+    try:
+        pdfmetrics.registerFont(TTFont("Roboto",      regular_path))
+        pdfmetrics.registerFont(TTFont("Roboto-Bold", bold_path))
+        fn, fn_bold = "Roboto", "Roboto-Bold"
+    except Exception:
+        pass
+
+    BG   = colors.HexColor("#d2bea5")
+    TEXT = colors.HexColor("#201a16")
+    GREY = colors.HexColor("#5a4e46")
+    LINE = colors.HexColor("#b8a090")
 
     buf = io.BytesIO()
+
+    def bg_canvas(canvas, doc):
+        canvas.saveState()
+        canvas.setFillColor(BG)
+        canvas.rect(0, 0, A4[0], A4[1], fill=1, stroke=0)
+        canvas.restoreState()
+
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=2*cm, bottomMargin=2*cm)
 
-    title_style = ParagraphStyle('title', fontSize=22, alignment=TA_CENTER,
-                                 spaceAfter=4, fontName=fn_bold)
-    sub_style   = ParagraphStyle('sub', fontSize=11, alignment=TA_CENTER,
-                                 spaceAfter=20, textColor=colors.HexColor("#888888"),
-                                 fontName=fn)
-    footer_style = ParagraphStyle('footer', fontSize=9, alignment=TA_CENTER,
-                                  textColor=colors.HexColor("#aaaaaa"), fontName=fn)
+    title_style  = ParagraphStyle('title',  fontSize=24, alignment=TA_CENTER,
+                                  spaceAfter=4,  fontName=fn_bold,
+                                  textColor=TEXT)
+    sub_style    = ParagraphStyle('sub',    fontSize=11, alignment=TA_CENTER,
+                                  spaceAfter=20, fontName=fn, textColor=GREY)
+    footer_style = ParagraphStyle('footer', fontSize=9,  alignment=TA_CENTER,
+                                  fontName=fn, textColor=GREY)
 
     story = [
         Paragraph("Panacea", title_style),
         Paragraph("Квитанция об оплате", sub_style),
-        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e0e0e0")),
+        HRFlowable(width="100%", thickness=1, color=LINE),
         Spacer(1, 0.5*cm),
     ]
 
     rows = [
-        ("Продукт",       "Panacea Plus — 1 месяц"),
-        ("Сумма",         f"{amount} Telegram Stars"),
-        ("Email",         email),
-        ("Тип",           "Для себя" if for_self else "Подарок"),
-        ("Дата оплаты",   paid_at),
-        ("Покупатель",    tg_user),
-        ("Статус",        "Оплачено"),
+        ("Продукт",     "Panacea Plus — 1 месяц"),
+        ("Сумма",       f"{amount} Telegram Stars"),
+        ("Email",       email),
+        ("Тип",         "Для себя" if for_self else "Подарок"),
+        ("Дата оплаты", paid_at),
+        ("Покупатель",  tg_user),
+        ("Статус",      "Оплачено"),
     ]
+
+    # Чередующиеся строки на фоне бежевого
+    row_bg1 = BG
+    row_bg2 = colors.HexColor("#c8ae96")
 
     table = Table(rows, colWidths=[5*cm, 11*cm])
     table.setStyle(TableStyle([
         ('FONTNAME',       (0,0), (-1,-1), fn),
-        ('FONTNAME',       (0,0), (0,-1), fn_bold),
+        ('FONTNAME',       (0,0), (0,-1),  fn_bold),
         ('FONTSIZE',       (0,0), (-1,-1), 11),
-        ('TEXTCOLOR',      (0,0), (0,-1), colors.HexColor("#888888")),
-        ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.HexColor("#f7f7f7"), colors.white]),
+        ('TEXTCOLOR',      (0,0), (-1,-1), TEXT),
+        ('TEXTCOLOR',      (0,0), (0,-1),  GREY),
+        ('ROWBACKGROUNDS', (0,0), (-1,-1), [row_bg1, row_bg2]),
         ('TOPPADDING',     (0,0), (-1,-1), 9),
         ('BOTTOMPADDING',  (0,0), (-1,-1), 9),
         ('LEFTPADDING',    (0,0), (-1,-1), 12),
-        ('GRID',           (0,0), (-1,-1), 0.5, colors.HexColor("#e0e0e0")),
+        ('GRID',           (0,0), (-1,-1), 0.5, LINE),
     ]))
 
     story.append(table)
     story.append(Spacer(1, 1*cm))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e0e0e0")))
+    story.append(HRFlowable(width="100%", thickness=1, color=LINE))
     story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("panacea.mom", footer_style))
 
-    doc.build(story)
+    doc.build(story, onFirstPage=bg_canvas, onLaterPages=bg_canvas)
     return buf.getvalue()
 
 
