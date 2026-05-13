@@ -112,6 +112,8 @@ STARS_PRICE = 1
 STATE_SUPPORT   = "support"
 STATE_PLUS_SELF = "plus_self"
 STATE_PLUS_GIFT = "plus_gift"
+STATE_CONFIRM_SELF = "confirm_self"  # email не найден, ждём подтверждения
+STATE_CONFIRM_GIFT = "confirm_gift"
 
 # ─── Хелперы кнопок ───────────────────────────────────────────────────────────
 def btn(text: str, callback_data: str = None, url: str = None,
@@ -281,9 +283,24 @@ KNOWLEDGE_BASE = {
 }
 
 # ─── Клавиатуры ───────────────────────────────────────────────────────────────
-def main_keyboard() -> dict:
+PHOTO_LOG_MESSAGE = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Message.png"
+PHOTO_LOG_PAYMENT = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Payment.png"
+PHOTO_LOG_OTHER   = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Other.png"
+
+def log_to_channel(photo: str, text: str):
+    if not SUPPORT_CHAT:
+        return
+    try:
+        _post("sendPhoto", {
+            "chat_id":   SUPPORT_CHAT,
+            "photo":     photo,
+            "caption":   text,
+            "parse_mode": "HTML",
+        })
+    except Exception:
+        pass
     return raw_keyboard([
-        [btn("Открыть сайт Panacea", web_app_url=SITE_URL, style="success")],
+        [btn("Открыть сайт Panacea", web_app_url=SITE_URL, style="primary")],
         [btn("Подписка Panacea Plus", callback_data="plus")],
         [
             btn("Канал Panacea", url=CHANNEL_URL),
@@ -328,6 +345,15 @@ def plus_article_keyboard() -> dict:
 def confirm_keyboard() -> dict:
     return raw_keyboard([[btn("← В главное меню", callback_data="back_main", style="primary")]])
 
+def email_confirm_keyboard() -> dict:
+    """Промежуточный экран когда email не найден."""
+    return raw_keyboard([
+        [
+            btn("Продолжить", callback_data="email_confirm_proceed", style="primary"),
+            btn("← Назад", callback_data="email_confirm_back"),
+        ],
+    ])
+
 def cancel_keyboard(target: str = "support") -> dict:
     return raw_keyboard([[btn("← Отмена", callback_data=target, style="primary")]])
 
@@ -362,6 +388,22 @@ def delete_msg(chat_id: int, message_id: int):
         _post("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
     except Exception:
         pass
+
+def _send_invoice(chat_id: int, email: str, for_self: bool):
+    result = _post("sendInvoice", {
+        "chat_id":      chat_id,
+        "title":        "Подписка Panacea Plus на 1 месяц для:",
+        "description":  email,
+        "payload":      json.dumps({"for_self": for_self, "email": email}),
+        "currency":     "XTR",
+        "prices":       [{"label": "Panacea Plus · 1 месяц", "amount": STARS_PRICE}],
+        "photo_url":    "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaGift.png",
+        "photo_width":  800,
+        "photo_height": 800,
+    })
+    invoice_msg_id = result.get("result", {}).get("message_id")
+    if invoice_msg_id:
+        redis_set(f"main_msg:{chat_id}", str(invoice_msg_id), ex=86400)
 
 # ─── Хендлеры ─────────────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -427,7 +469,30 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Если ты уже писал нам ранее, не нужно отправлять повторное сообщение — мы обязательно ответим.",
             cancel_keyboard("support"))
 
-    elif data in KNOWLEDGE_BASE:
+    elif data == "email_confirm_proceed":
+        # Пользователь подтвердил — выставляем инвойс
+        state = redis_get(f"state:{chat_id}")
+        email = redis_get(f"pending_email:{chat_id}")
+        for_self = state == STATE_CONFIRM_SELF
+        redis_del(f"state:{chat_id}")
+        redis_del(f"pending_email:{chat_id}")
+        delete_msg(chat_id, msg_id)
+        if email:
+            _send_invoice(chat_id, email, for_self)
+
+    elif data == "email_confirm_back":
+        # Назад — возвращаем к вводу email
+        state = redis_get(f"state:{chat_id}")
+        for_self = state == STATE_CONFIRM_SELF
+        redis_del(f"state:{chat_id}")
+        redis_del(f"pending_email:{chat_id}")
+        new_state = STATE_PLUS_SELF if for_self else STATE_PLUS_GIFT
+        redis_set(f"state:{chat_id}", new_state)
+        edit_photo(chat_id, msg_id, PHOTO_PLUS,
+            "<blockquote>Подписка для себя</blockquote>\n\nУкажи email, который используешь для входа на panacea.mom:"
+            if for_self else
+            "<blockquote>Подписка в подарок</blockquote>\n\nУкажи email друга, который он использует для входа на panacea.mom:",
+            cancel_keyboard("plus"))
         kb = plus_article_keyboard() if data == "kb_plus" else article_keyboard()
         edit_photo(chat_id, msg_id, PHOTO_SUPPORT, KNOWLEDGE_BASE[data]["text"], kb)
 
@@ -442,22 +507,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if state == STATE_SUPPORT:
         redis_del(f"state:{chat_id}")
-        if SUPPORT_CHAT:
-            try:
-                _post("sendMessage", {
-                    "chat_id": SUPPORT_CHAT,
-                    "text": (
-                        f"✉ Обращение\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"От: {user.full_name}\n"
-                        f"Telegram: @{user.username or '—'} (ID: {user.id})\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"{text}"
-                    ),
-                    "parse_mode": "HTML",
-                })
-            except Exception:
-                pass
+        log_to_channel(PHOTO_LOG_MESSAGE,
+            f"✉ Обращение\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"От: {user.full_name}\n"
+            f"Telegram: @{user.username or '—'} (ID: {user.id})\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"{text}"
+        )
         send_photo(chat_id, PHOTO_MAIN,
                    "Сообщение отправлено. Мы ответим в ближайшее время.",
                    confirm_keyboard())
@@ -476,35 +533,27 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         except Exception:
             email_ok = False
 
-        # Алерт — временное сообщение перед инвойсом
-        if email_ok:
-            alert_text = f"Email {text} подтверждён."
-        else:
-            alert_text = f"Аккаунт с адресом {text} пока не найден. Подписка активируется когда пользователь с этой почтой зайдёт на сайт."
-
-        alert_result = _post("sendMessage", {"chat_id": chat_id, "text": alert_text})
-
         # Удаляем сообщение с запросом email
         main_msg_id = redis_get(f"main_msg:{chat_id}")
         if main_msg_id:
             delete_msg(chat_id, int(main_msg_id))
 
-        result = _post("sendInvoice", {
-            "chat_id":      chat_id,
-            "title":        "Подписка Panacea Plus на 1 месяц для:",
-            "description":  text,
-            "payload":      json.dumps({"for_self": for_self, "email": text}),
-            "currency":     "XTR",
-            "prices":       [{"label": "Panacea Plus · 1 месяц", "amount": STARS_PRICE}],
-            "photo_url":    "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaGift.png",
-            "photo_width":  800,
-            "photo_height": 800,
-        })
+        if not email_ok:
+            # Промежуточный экран — email не найден
+            new_state = STATE_CONFIRM_SELF if for_self else STATE_CONFIRM_GIFT
+            redis_set(f"state:{chat_id}", new_state)
+            redis_set(f"pending_email:{chat_id}", text, ex=600)
+            result = send_photo(chat_id, PHOTO_PLUS,
+                f"Аккаунт с адресом {text} пока не найден. "
+                f"Подписка активируется когда пользователь с этой почтой зайдёт на сайт.",
+                email_confirm_keyboard())
+            new_msg_id = result.get("result", {}).get("message_id")
+            if new_msg_id:
+                redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
+            return
 
-        # Удаляем алерт после отправки инвойса — не удаляем, пусть пользователь прочитает
-        invoice_msg_id = result.get("result", {}).get("message_id")
-        if invoice_msg_id:
-            redis_set(f"main_msg:{chat_id}", str(invoice_msg_id), ex=86400)
+        # Email найден — сразу инвойс
+        _send_invoice(chat_id, text, for_self)
 
 async def stars_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
@@ -538,6 +587,15 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ok, detail = activate_premium(email) if email else (False, "email не передан")
 
+    if not ok and detail and "не найден" not in detail:
+        # Неожиданная ошибка Firebase — логируем отдельно
+        log_to_channel(PHOTO_LOG_OTHER,
+            f"⚠ Ошибка активации\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"Email: {email}\n"
+            f"Ошибка: {detail}"
+        )
+
     # Удаляем инвойс
     main_msg_id = redis_get(f"main_msg:{chat_id}")
     if main_msg_id:
@@ -564,20 +622,16 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if SUPPORT_CHAT:
         try:
             status = "активирована" if ok else f"ошибка: {detail}"
-            _post("sendMessage", {
-                "chat_id": SUPPORT_CHAT,
-                "text": (
-                    f"★ Новая оплата\n"
-                    f"━━━━━━━━━━━━━━━\n"
-                    f"От: {user.full_name}\n"
-                    f"Telegram: @{user.username or '—'} (ID: {user.id})\n"
-                    f"Email: {email}\n"
-                    f"Тип: {'для себя' if payload.get('for_self') else 'подарок'}\n"
-                    f"Сумма: {payment.total_amount} ★\n"
-                    f"Firebase: {status}"
-                ),
-                "parse_mode": "HTML",
-            })
+            log_to_channel(PHOTO_LOG_PAYMENT,
+                f"★ Новая оплата\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"От: {user.full_name}\n"
+                f"Telegram: @{user.username or '—'} (ID: {user.id})\n"
+                f"Email: {email}\n"
+                f"Тип: {'для себя' if payload.get('for_self') else 'подарок'}\n"
+                f"Сумма: {payment.total_amount} ★\n"
+                f"Firebase: {status}"
+            )
         except Exception:
             pass
 
