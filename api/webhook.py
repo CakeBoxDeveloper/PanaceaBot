@@ -494,6 +494,7 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
     return buf.getvalue()
 
 
+def _send_invoice(chat_id: int, email: str, for_self: bool):
     result = _post("sendInvoice", {
         "chat_id":      chat_id,
         "title":        "🔑 Подписка Panacea Plus на 1 месяц для:",
