@@ -659,11 +659,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if state == STATE_SUPPORT:
         redis_del(f"state:{chat_id}")
         log_to_channel(PHOTO_LOG_MESSAGE,
-            f"✉ Обращение\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"От: {user.full_name}\n"
-            f"Telegram: @{user.username or '—'} (ID: {user.id})\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"<blockquote>@{user.username or '—'} · {user.full_name} · ID {user.id}</blockquote>\n"
             f"{text}"
         )
         # Редактируем текущее сообщение на подтверждение
@@ -745,15 +741,6 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ok, detail = activate_premium(email) if email else (False, "email не передан")
 
-    if not ok and detail and "не найден" not in detail:
-        # Неожиданная ошибка Firebase — логируем отдельно
-        log_to_channel(PHOTO_LOG_OTHER,
-            f"⚠ Ошибка активации\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"Email: {email}\n"
-            f"Ошибка: {detail}"
-        )
-
     # Удаляем инвойс
     main_msg_id = redis_get(f"main_msg:{chat_id}")
     if main_msg_id:
@@ -811,21 +798,22 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if new_msg_id:
         redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
 
-    if SUPPORT_CHAT:
-        try:
-            status = "активирована" if ok else f"ошибка: {detail}"
-            log_to_channel(PHOTO_LOG_PAYMENT,
-                f"★ Новая оплата\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"От: {user.full_name}\n"
-                f"Telegram: @{user.username or '—'} (ID: {user.id})\n"
-                f"Email: {email}\n"
-                f"Тип: {'для себя' if payload.get('for_self') else 'подарок'}\n"
-                f"Сумма: {payment.total_amount} ★\n"
-                f"Firebase: {status}"
-            )
-        except Exception:
-            pass
+    # Лог оплаты в канал
+    for_self = payload.get("for_self", True)
+    firebase_ok = ok
+    # Не логируем ошибку неправильной почты — только реальные ошибки Firebase
+    firebase_error = None if (ok or "не найден" in detail or "Malformed" in detail or "email" in detail.lower()) else detail
+
+    log_caption = (
+        f"Имя: {user.full_name}\n"
+        f"<blockquote>@{user.username or '—'} · ID {user.id}</blockquote>\n"
+        f"{email} ({'для себя' if for_self else 'в подарок'})\n"
+        f"{payment.total_amount} ★"
+    )
+    if firebase_error:
+        log_caption += f"\n<blockquote>Почта не найдена в базе</blockquote>"
+
+    log_to_channel(PHOTO_LOG_PAYMENT, log_caption)
 
 # ─── Vercel handler ───────────────────────────────────────────────────────────
 class handler(BaseHTTPRequestHandler):
