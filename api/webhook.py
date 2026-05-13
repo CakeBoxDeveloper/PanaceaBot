@@ -633,7 +633,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await query.answer("Не удалось сохранить", show_alert=False)
 
     elif data == "email_confirm_proceed":
-        # Пользователь подтвердил — выставляем инвойс
         state = redis_get(f"state:{chat_id}")
         email = redis_get(f"pending_email:{chat_id}")
         for_self = state == STATE_CONFIRM_SELF
@@ -642,6 +641,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         delete_msg(chat_id, msg_id)
         if email:
             _send_invoice(chat_id, email, for_self)
+        else:
+            # email пропал из Redis — просим ввести снова
+            new_state = STATE_PLUS_SELF if for_self else STATE_PLUS_GIFT
+            redis_set(f"state:{chat_id}", new_state)
+            result = send_photo(chat_id, PHOTO_PLUS,
+                "<blockquote>Сессия истекла</blockquote>\n\nПожалуйста, введи email ещё раз:",
+                cancel_keyboard("plus"))
+            new_msg_id = result.get("result", {}).get("message_id")
+            if new_msg_id:
+                redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
 
     elif data == "email_confirm_back":
         state = redis_get(f"state:{chat_id}")
@@ -656,7 +665,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "<blockquote>Подписка в подарок</blockquote>\n\nУкажи email друга, который он использует для входа на panacea.mom:",
             cancel_keyboard("plus"))
 
-    elif data in KNOWLEDGE_BASE:async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    elif data in KNOWLEDGE_BASE:
+        kb = plus_article_keyboard() if data == "kb_plus" else article_keyboard()
+        edit_photo(chat_id, msg_id, PHOTO_SUPPORT, KNOWLEDGE_BASE[data]["text"], kb)
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg     = update.message
     chat_id = msg.chat_id
     text    = msg.text.strip()
