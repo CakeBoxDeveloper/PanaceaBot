@@ -320,7 +320,7 @@ def support_keyboard() -> dict:
         if i + 1 < len(items):
             row.append(btn(items[i+1][1]["title"], callback_data=items[i+1][0]))
         rows.append(row)
-    rows.append([btn("Связь с командой", callback_data="contact")])
+    rows.append([btn("Связь с командой", callback_data="contact", style="success")])
     rows.append([btn("← Назад", callback_data="back_main", style="primary")])
     return raw_keyboard(rows)
 
@@ -343,8 +343,8 @@ def email_confirm_keyboard() -> dict:
     """Промежуточный экран когда email не найден."""
     return raw_keyboard([
         [
-            btn("Продолжить", callback_data="email_confirm_proceed", style="primary"),
-            btn("← Назад", callback_data="email_confirm_back"),
+            btn("← Назад", callback_data="email_confirm_back", style="danger"),
+            btn("Продолжить", callback_data="email_confirm_proceed", style="success"),
         ],
     ])
 
@@ -404,7 +404,7 @@ def log_to_channel(photo: str, text: str):
 def _send_invoice(chat_id: int, email: str, for_self: bool):
     result = _post("sendInvoice", {
         "chat_id":      chat_id,
-        "title":        "Подписка Panacea Plus на 1 месяц для:",
+        "title":        "🔑 Panacea Plus · 1 месяц",
         "description":  email,
         "payload":      json.dumps({"for_self": for_self, "email": email}),
         "currency":     "XTR",
@@ -546,9 +546,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             f"━━━━━━━━━━━━━━━\n"
             f"{text}"
         )
-        send_photo(chat_id, PHOTO_MAIN,
-                   "Сообщение отправлено. Мы ответим в ближайшее время.",
-                   confirm_keyboard())
+        # Редактируем текущее сообщение на подтверждение
+        main_msg_id = redis_get(f"main_msg:{chat_id}")
+        if main_msg_id:
+            edit_photo(chat_id, int(main_msg_id), PHOTO_SUPPORT,
+                "Сообщение отправлено. Мы ответим в ближайшее время.",
+                confirm_keyboard())
+        else:
+            send_photo(chat_id, PHOTO_SUPPORT,
+                "Сообщение отправлено. Мы ответим в ближайшее время.",
+                confirm_keyboard())
 
     elif state in (STATE_PLUS_SELF, STATE_PLUS_GIFT):
         redis_del(f"state:{chat_id}")
@@ -575,8 +582,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             redis_set(f"state:{chat_id}", new_state)
             redis_set(f"pending_email:{chat_id}", text, ex=600)
             result = send_photo(chat_id, PHOTO_PLUS,
-                f"Аккаунт с адресом {text} пока не найден. "
-                f"Подписка активируется когда пользователь с этой почтой зайдёт на сайт.",
+                f"<blockquote>Аккаунт с адресом {text} пока не найден на сайте.\n\n"
+                f"Подписку можно купить сейчас — аккаунт активируется автоматически когда пользователь с этой почтой войдёт на panacea.mom.</blockquote>",
                 email_confirm_keyboard())
             new_msg_id = result.get("result", {}).get("message_id")
             if new_msg_id:
@@ -634,13 +641,13 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if ok:
         text = (
-            "Оплата прошла!\n\n"
+            f"<blockquote>Оплата прошла!</blockquote>\n\n"
             f"Подписка Panacea Plus активирована на аккаунт {email}.\n\n"
             "Обнови страницу сайта — изменения уже применены."
         )
     else:
         text = (
-            "Оплата прошла!\n\n"
+            f"<blockquote>Оплата прошла!</blockquote>\n\n"
             f"Аккаунт с адресом {email} пока не зарегистрирован на сайте. "
             "Подписка активируется автоматически как только ты войдёшь под этим аккаунтом на panacea.mom."
         )
