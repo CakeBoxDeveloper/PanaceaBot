@@ -283,22 +283,16 @@ KNOWLEDGE_BASE = {
 }
 
 # ─── Клавиатуры ───────────────────────────────────────────────────────────────
-PHOTO_LOG_MESSAGE = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Message.png"
-PHOTO_LOG_PAYMENT = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Payment.png"
-PHOTO_LOG_OTHER   = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Other.png"
-
-def log_to_channel(photo: str, text: str):
-    if not SUPPORT_CHAT:
-        return
-    try:
-        _post("sendPhoto", {
-            "chat_id":   SUPPORT_CHAT,
-            "photo":     photo,
-            "caption":   text,
-            "parse_mode": "HTML",
-        })
-    except Exception:
-        pass
+def main_keyboard() -> dict:
+    return raw_keyboard([
+        [btn("Открыть сайт Panacea", web_app_url=SITE_URL, style="primary")],
+        [btn("Подписка Panacea Plus", callback_data="plus")],
+        [
+            btn("Канал Panacea", url=CHANNEL_URL),
+            btn("Panacea Youtube", url=YOUTUBE_URL),
+        ],
+        [btn("Справочный центр", callback_data="support")],
+    ])
     return raw_keyboard([
         [btn("Открыть сайт Panacea", web_app_url=SITE_URL, style="primary")],
         [btn("Подписка Panacea Plus", callback_data="plus")],
@@ -389,6 +383,24 @@ def delete_msg(chat_id: int, message_id: int):
     except Exception:
         pass
 
+# ─── Логирование в канал ──────────────────────────────────────────────────────
+PHOTO_LOG_MESSAGE = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Message.png"
+PHOTO_LOG_PAYMENT = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Payment.png"
+PHOTO_LOG_OTHER   = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/Other.png"
+
+def log_to_channel(photo: str, text: str):
+    if not SUPPORT_CHAT:
+        return
+    try:
+        _post("sendPhoto", {
+            "chat_id":    SUPPORT_CHAT,
+            "photo":      photo,
+            "caption":    text,
+            "parse_mode": "HTML",
+        })
+    except Exception:
+        pass
+
 def _send_invoice(chat_id: int, email: str, for_self: bool):
     result = _post("sendInvoice", {
         "chat_id":      chat_id,
@@ -409,6 +421,7 @@ def _send_invoice(chat_id: int, email: str, for_self: bool):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     redis_del(f"state:{chat_id}")
+    # Удаляем команду /start
     try:
         delete_msg(chat_id, update.message.message_id)
     except Exception:
@@ -416,11 +429,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Удаляем предыдущее главное сообщение если есть
     old_msg_id = redis_get(f"main_msg:{chat_id}")
     if old_msg_id:
-        delete_msg(chat_id, int(old_msg_id))
-    result = send_photo(chat_id, PHOTO_MAIN, WELCOME_TEXT, main_keyboard())
-    new_msg_id = result.get("result", {}).get("message_id")
-    if new_msg_id:
-        redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
+        try:
+            delete_msg(chat_id, int(old_msg_id))
+        except Exception:
+            pass
+    # Отправляем новое главное сообщение
+    try:
+        result = send_photo(chat_id, PHOTO_MAIN, " ", main_keyboard())
+        new_msg_id = result.get("result", {}).get("message_id")
+        if new_msg_id:
+            redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
+    except Exception as e:
+        # Fallback — отправляем без картинки
+        try:
+            result = _post("sendMessage", {
+                "chat_id": chat_id,
+                "text": "Panacea",
+                "reply_markup": main_keyboard(),
+            })
+            new_msg_id = result.get("result", {}).get("message_id")
+            if new_msg_id:
+                redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
+        except Exception:
+            pass
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
