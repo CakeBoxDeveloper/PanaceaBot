@@ -531,10 +531,10 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
 
     story = [
         Paragraph("Panacea Plus", title_style),
-        Spacer(1, 0.3*cm),
+        Spacer(1, 0.8*cm),
         table,
         Spacer(1, 1*cm),
-        Paragraph("panacea.mom", ParagraphStyle('footer2', fontSize=22, alignment=TA_CENTER,
+        Paragraph("panacea.mom", ParagraphStyle('footer2', fontSize=11, alignment=TA_CENTER,
                                                 fontName=fn_title, textColor=GREY)),
     ]
 
