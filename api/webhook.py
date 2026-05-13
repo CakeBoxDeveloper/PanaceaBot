@@ -284,19 +284,19 @@ KNOWLEDGE_BASE = {
 def main_keyboard() -> dict:
     return raw_keyboard([
         [btn("Открыть сайт Panacea", web_app_url=SITE_URL, style="success")],
-        [btn("Подписка Panacea Plus", callback_data="plus", style="success")],
+        [btn("Подписка Panacea Plus", callback_data="plus")],
         [
             btn("Канал Panacea", url=CHANNEL_URL),
             btn("Panacea Youtube", url=YOUTUBE_URL),
         ],
-        [btn("Справочный центр", callback_data="support", style="primary")],
+        [btn("Справочный центр", callback_data="support")],
     ])
 
 def plus_keyboard() -> dict:
     return raw_keyboard([
         [
-            btn("Купить себе", callback_data="plus_self", style="success"),
-            btn("Подарить другу", callback_data="plus_gift", style="success"),
+            btn("Купить себе", callback_data="plus_self"),
+            btn("Подарить другу", callback_data="plus_gift"),
         ],
         [btn("← Назад", callback_data="back_main", style="primary")],
     ])
@@ -309,7 +309,7 @@ def support_keyboard() -> dict:
         if i + 1 < len(items):
             row.append(btn(items[i+1][1]["title"], callback_data=items[i+1][0]))
         rows.append(row)
-    rows.append([btn("Связь с командой", callback_data="contact", style="success")])
+    rows.append([btn("Связь с командой", callback_data="contact")])
     rows.append([btn("← Назад", callback_data="back_main", style="primary")])
     return raw_keyboard(rows)
 
@@ -319,8 +319,8 @@ def article_keyboard() -> dict:
 def plus_article_keyboard() -> dict:
     return raw_keyboard([
         [
-            btn("Купить себе", callback_data="plus_self", style="success"),
-            btn("Подарить другу", callback_data="plus_gift", style="success"),
+            btn("Купить себе", callback_data="plus_self"),
+            btn("Подарить другу", callback_data="plus_gift"),
         ],
         [btn("← Назад", callback_data="support", style="primary")],
     ])
@@ -465,27 +465,43 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif state in (STATE_PLUS_SELF, STATE_PLUS_GIFT):
         redis_del(f"state:{chat_id}")
         for_self = state == STATE_PLUS_SELF
-        label    = (
-            f"<blockquote>Вы покупаете подписку Panacea Plus на 1 месяц для:</blockquote>\n{text}"
-            if for_self else
-            f"<blockquote>Вы покупаете подписку Panacea Plus на 1 месяц для:</blockquote>\n{text}"
-        )
-        # Удаляем сообщение с запросом email (main_msg)
+
+        # Проверяем email в Firebase
+        email_ok = False
+        try:
+            db = _get_fb()
+            if db:
+                fb_user = fb_auth.get_user_by_email(text)
+                email_ok = fb_user is not None
+        except Exception:
+            email_ok = False
+
+        # Алерт — временное сообщение перед инвойсом
+        if email_ok:
+            alert_text = f"Email {text} подтверждён."
+        else:
+            alert_text = f"Аккаунт с адресом {text} пока не найден. Подписка активируется когда пользователь с этой почтой зайдёт на сайт."
+
+        alert_result = _post("sendMessage", {"chat_id": chat_id, "text": alert_text})
+
+        # Удаляем сообщение с запросом email
         main_msg_id = redis_get(f"main_msg:{chat_id}")
         if main_msg_id:
             delete_msg(chat_id, int(main_msg_id))
+
         result = _post("sendInvoice", {
             "chat_id":      chat_id,
-            "title":        "Panacea Plus",
-            "description":  f"{'Для себя' if for_self else 'Подарок'}: {text}",
+            "title":        "Подписка Panacea Plus на 1 месяц для:",
+            "description":  text,
             "payload":      json.dumps({"for_self": for_self, "email": text}),
             "currency":     "XTR",
-            "prices":       [{"label": "Panacea Plus", "amount": STARS_PRICE}],
+            "prices":       [{"label": "Panacea Plus · 1 месяц", "amount": STARS_PRICE}],
             "photo_url":    "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaGift.png",
             "photo_width":  800,
             "photo_height": 800,
         })
-        # Сохраняем id инвойса как main_msg
+
+        # Удаляем алерт после отправки инвойса — не удаляем, пусть пользователь прочитает
         invoice_msg_id = result.get("result", {}).get("message_id")
         if invoice_msg_id:
             redis_set(f"main_msg:{chat_id}", str(invoice_msg_id), ex=86400)
