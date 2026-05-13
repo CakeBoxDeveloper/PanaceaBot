@@ -455,9 +455,9 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
                          paid_at: str, tg_user: str) -> bytes:
     """Генерирует PDF-квитанцию и возвращает байты."""
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import cm, mm
+    from reportlab.lib.units import cm
     from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Flowable
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.enums import TA_LEFT, TA_CENTER
     from reportlab.pdfbase import pdfmetrics
@@ -499,55 +499,12 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=2*cm, bottomMargin=2*cm)
 
-    # Скруглённая таблица через кастомный Flowable
-    class RoundedTable(Flowable):
-        def __init__(self, rows_data, col_w, row_h, radius):
-            super().__init__()
-            self.rows   = rows_data
-            self.col_w  = col_w
-            self.row_h  = row_h
-            self.radius = radius
-            self.width  = sum(col_w)
-            self.height = row_h * len(rows_data)
+    title_style  = ParagraphStyle('title',  fontName=fn_title, fontSize=28,
+                                  textColor=TEXT, alignment=TA_LEFT, spaceAfter=8)
+    footer_style = ParagraphStyle('footer', fontSize=18, alignment=TA_CENTER,
+                                  fontName=fn, textColor=GREY)
 
-        def draw(self):
-            c = self.canv
-            c.saveState()
-            n = len(self.rows)
-            for i, (label, value, bg) in enumerate(self.rows):
-                y = self.height - (i + 1) * self.row_h
-                c.setFillColor(bg)
-                if i == 0:
-                    # Верхняя строка — скруглённые верхние углы
-                    c.roundRect(0, y, self.width, self.row_h, self.radius, fill=1, stroke=0)
-                    c.rect(0, y, self.width, self.row_h / 2, fill=1, stroke=0)
-                elif i == n - 1:
-                    # Нижняя строка — скруглённые нижние углы
-                    c.roundRect(0, y, self.width, self.row_h, self.radius, fill=1, stroke=0)
-                    c.rect(0, y + self.row_h / 2, self.width, self.row_h / 2, fill=1, stroke=0)
-                else:
-                    c.rect(0, y, self.width, self.row_h, fill=1, stroke=0)
-                # Разделитель
-                if i > 0:
-                    c.setStrokeColor(LINE)
-                    c.setLineWidth(0.5)
-                    c.line(0, y + self.row_h, self.width, y + self.row_h)
-                # Вертикальный разделитель колонок
-                c.setStrokeColor(LINE)
-                c.setLineWidth(0.5)
-                c.line(self.col_w[0], y, self.col_w[0], y + self.row_h)
-                # Текст
-                pad = 10
-                text_y = y + self.row_h * 0.32
-                c.setFillColor(GREY)
-                c.setFont(fn_bold, 10)
-                c.drawString(pad, text_y, label)
-                c.setFillColor(TEXT)
-                c.setFont(fn, 11)
-                c.drawString(self.col_w[0] + pad, text_y, value)
-            c.restoreState()
-
-    rows_data = [
+    rows = [
         ("Продукт",     "Panacea Plus — 1 месяц"),
         ("Сумма",       f"{amount} Telegram Stars"),
         ("Email",       email),
@@ -556,60 +513,29 @@ def generate_receipt_pdf(email: str, for_self: bool, amount: int,
         ("Покупатель",  tg_user),
         ("Статус",      "Оплачено"),
     ]
-    rows_with_bg = [(l, v, ROW1 if i % 2 == 0 else ROW2) for i, (l, v) in enumerate(rows_data)]
 
-    col_w  = [5*cm, page_w - 5*cm]
-    row_h  = 0.85*cm
-    table  = RoundedTable(rows_with_bg, col_w, row_h, radius=6)
-
-    # Заголовок: Panacea слева, логотип справа
-    title_style  = ParagraphStyle('title', fontName=fn_title, fontSize=28,
-                                  textColor=TEXT, alignment=TA_LEFT)
-    footer_style = ParagraphStyle('footer', fontSize=18, alignment=TA_CENTER,
-                                  fontName=fn, textColor=GREY)
-
-    # Пробуем загрузить SVG логотип
-    logo_cell = ""
-    try:
-        from svglib.svglib import svg2rlg
-        svg_path = os.path.join(base, "PanaceaKeyGift.svg")
-        if not os.path.exists(svg_path):
-            import urllib.request as _ur
-            req = _ur.Request(
-                "https://raw.githubusercontent.com/CakeBoxDeveloper/Psy/a06723c9ee3a5e1cae373b6662e3fbb986ad52b9/PanaceaKeyGift.svg",
-                headers={"User-Agent": "Mozilla/5.0"})
-            with _ur.urlopen(req, timeout=5) as r:
-                with open(svg_path, "wb") as f:
-                    f.write(r.read())
-        drawing = svg2rlg(svg_path)
-        if drawing:
-            target_h = 1.2*cm
-            scale = target_h / drawing.height
-            drawing.width  *= scale
-            drawing.height *= scale
-            drawing.transform = (scale, 0, 0, scale, 0, 0)
-            logo_cell = drawing
-    except Exception:
-        pass
-
-    header_table = Table(
-        [[Paragraph("Panacea", title_style), logo_cell]],
-        colWidths=[page_w * 0.75, page_w * 0.25]
-    )
-    header_table.setStyle(TableStyle([
-        ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
-        ('ALIGN',         (1,0), (1,0),   'RIGHT'),
-        ('BACKGROUND',    (0,0), (-1,-1), BG),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-        ('TOPPADDING',    (0,0), (-1,-1), 0),
+    table = Table(rows, colWidths=[5*cm, page_w - 5*cm])
+    table.setStyle(TableStyle([
+        ('FONTNAME',       (0,0), (-1,-1), fn),
+        ('FONTNAME',       (0,0), (0,-1),  fn_bold),
+        ('FONTSIZE',       (0,0), (-1,-1), 11),
+        ('TEXTCOLOR',      (0,0), (-1,-1), TEXT),
+        ('TEXTCOLOR',      (0,0), (0,-1),  GREY),
+        ('ROWBACKGROUNDS', (0,0), (-1,-1), [ROW1, ROW2]),
+        ('TOPPADDING',     (0,0), (-1,-1), 9),
+        ('BOTTOMPADDING',  (0,0), (-1,-1), 9),
+        ('LEFTPADDING',    (0,0), (-1,-1), 12),
+        ('BOX',            (0,0), (-1,-1), 0.5, LINE),
+        ('INNERGRID',      (0,0), (-1,-1), 0.5, LINE),
     ]))
 
     story = [
-        header_table,
-        Spacer(1, 0.4*cm),
+        Paragraph("Panacea Plus", title_style),
+        Spacer(1, 0.3*cm),
         table,
         Spacer(1, 1*cm),
-        Paragraph("panacea.mom", footer_style),
+        Paragraph("panacea.mom", ParagraphStyle('footer2', fontSize=22, alignment=TA_CENTER,
+                                                fontName=fn_title, textColor=GREY)),
     ]
 
     doc.build(story, onFirstPage=bg_canvas, onLaterPages=bg_canvas)
