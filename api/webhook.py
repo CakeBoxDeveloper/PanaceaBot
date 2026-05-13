@@ -762,7 +762,7 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Подписка активируется автоматически как только ты войдёшь под этим аккаунтом на panacea.mom."
         )
 
-    # Отправляем PDF-квитанцию и получаем ссылку для кнопки
+    # Генерируем PDF и получаем ссылку для кнопки (не отправляем отдельным сообщением)
     receipt_url = None
     try:
         import datetime
@@ -771,10 +771,12 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         pdf_bytes = generate_receipt_pdf(email, payload.get("for_self", True),
                                          payment.total_amount, paid_at, tg_user)
         doc_result = _post_file("sendDocument", chat_id, pdf_bytes,
-                   f"receipt_{chat_id}.pdf", "application/pdf",
-                   "Квитанция об оплате Panacea Plus")
-        # Получаем прямую ссылку на файл
+                   f"receipt_{chat_id}.pdf", "application/pdf", "")
+        # Сразу удаляем — нам нужна только ссылка
+        doc_msg_id = doc_result.get("result", {}).get("message_id")
         file_id = doc_result.get("result", {}).get("document", {}).get("file_id")
+        if doc_msg_id:
+            delete_msg(chat_id, doc_msg_id)
         if file_id:
             file_info = _post("getFile", {"file_id": file_id})
             file_path = file_info.get("result", {}).get("file_path")
@@ -783,11 +785,16 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception:
         pass
 
-    # Обновляем сообщение об оплате — добавляем кнопку квитанции если есть ссылка
-    receipt_keyboard = raw_keyboard([
-        [btn("Скачать квитанцию", url=receipt_url)] if receipt_url else [],
-        [btn("← В главное меню", callback_data="back_main", style="primary")],
-    ]) if receipt_url else confirm_keyboard()
+    # Клавиатура — "Назад" слева, "Скачать квитанцию" справа (зелёная)
+    if receipt_url:
+        receipt_keyboard = raw_keyboard([
+            [
+                btn("← В главное меню", callback_data="back_main", style="primary"),
+                btn("Скачать квитанцию", url=receipt_url, style="success"),
+            ],
+        ])
+    else:
+        receipt_keyboard = confirm_keyboard()
 
     result = send_photo(chat_id, PHOTO_MAIN, text, receipt_keyboard)
     new_msg_id = result.get("result", {}).get("message_id")
