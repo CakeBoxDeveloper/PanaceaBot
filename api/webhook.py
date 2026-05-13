@@ -129,7 +129,7 @@ def raw_keyboard(rows: list[list[dict]]) -> dict:
 # ─── Тексты ───────────────────────────────────────────────────────────────────
 WELCOME_TEXT = " "
 
-SUPPORT_TEXT = "<blockquote>Справочный центр</blockquote>\n\nВыбери тему — и мы всё объясним:"
+SUPPORT_TEXT = "<blockquote>Справочный центр</blockquote>"
 
 PLUS_TEXT = (
     "<blockquote>Panacea Plus</blockquote>\n\n"
@@ -371,7 +371,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         delete_msg(chat_id, update.message.message_id)
     except Exception:
         pass
-    send_photo(chat_id, PHOTO_MAIN, WELCOME_TEXT, main_keyboard())
+    # Удаляем предыдущее главное сообщение если есть
+    old_msg_id = redis_get(f"main_msg:{chat_id}")
+    if old_msg_id:
+        delete_msg(chat_id, int(old_msg_id))
+    result = send_photo(chat_id, PHOTO_MAIN, WELCOME_TEXT, main_keyboard())
+    new_msg_id = result.get("result", {}).get("message_id")
+    if new_msg_id:
+        redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -382,7 +389,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if data == "back_main":
         redis_del(f"state:{chat_id}")
-        edit_photo(chat_id, msg_id, PHOTO_MAIN, WELCOME_TEXT, main_keyboard())
+        # Удаляем текущее сообщение, отправляем новое главное
+        delete_msg(chat_id, msg_id)
+        old_main = redis_get(f"main_msg:{chat_id}")
+        if old_main and int(old_main) != msg_id:
+            delete_msg(chat_id, int(old_main))
+        result = send_photo(chat_id, PHOTO_MAIN, WELCOME_TEXT, main_keyboard())
+        new_msg_id = result.get("result", {}).get("message_id")
+        if new_msg_id:
+            redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
 
     elif data == "support":
         redis_del(f"state:{chat_id}")
@@ -407,7 +422,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif data == "contact":
         redis_set(f"state:{chat_id}", STATE_SUPPORT)
         edit_photo(chat_id, msg_id, PHOTO_SUPPORT,
-            "<blockquote>Связь с командой</blockquote>\n\nНапиши своё сообщение:",
+            "<blockquote>Связь с командой</blockquote>\n\n"
+            "Напиши своё сообщение — мы отвечаем всем в порядке очереди.\n\n"
+            "Если ты уже писал нам ранее, не нужно отправлять повторное сообщение — мы обязательно ответим.",
             cancel_keyboard("support"))
 
     elif data in KNOWLEDGE_BASE:
@@ -448,11 +465,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif state in (STATE_PLUS_SELF, STATE_PLUS_GIFT):
         redis_del(f"state:{chat_id}")
         for_self = state == STATE_PLUS_SELF
-        label    = f"Для аккаунта: {text}" if for_self else f"Подарок для: {text}"
-        _post("sendInvoice", {
+        label    = (
+            f"<blockquote>Вы покупаете подписку Panacea Plus на 1 месяц для:</blockquote>\n{text}"
+            if for_self else
+            f"<blockquote>Вы покупаете подписку Panacea Plus на 1 месяц для:</blockquote>\n{text}"
+        )
+        # Удаляем сообщение с запросом email (main_msg)
+        main_msg_id = redis_get(f"main_msg:{chat_id}")
+        if main_msg_id:
+            delete_msg(chat_id, int(main_msg_id))
+        result = _post("sendInvoice", {
             "chat_id":      chat_id,
             "title":        "Panacea Plus",
-            "description":  label,
+            "description":  f"{'Для себя' if for_self else 'Подарок'}: {text}",
             "payload":      json.dumps({"for_self": for_self, "email": text}),
             "currency":     "XTR",
             "prices":       [{"label": "Panacea Plus", "amount": STARS_PRICE}],
@@ -460,6 +485,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "photo_width":  800,
             "photo_height": 800,
         })
+        # Сохраняем id инвойса как main_msg
+        invoice_msg_id = result.get("result", {}).get("message_id")
+        if invoice_msg_id:
+            redis_set(f"main_msg:{chat_id}", str(invoice_msg_id), ex=86400)
 
 async def stars_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
@@ -493,20 +522,28 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ok, detail = activate_premium(email) if email else (False, "email не передан")
 
+    # Удаляем инвойс
+    main_msg_id = redis_get(f"main_msg:{chat_id}")
+    if main_msg_id:
+        delete_msg(chat_id, int(main_msg_id))
+
     if ok:
         text = (
-            f"Оплата прошла!\n\n"
+            "Оплата прошла!\n\n"
             f"Подписка Panacea Plus активирована на аккаунт {email}.\n\n"
-            f"Обнови страницу сайта — изменения уже применены."
+            "Обнови страницу сайта — изменения уже применены."
         )
     else:
         text = (
-            f"Оплата прошла!\n\n"
+            "Оплата прошла!\n\n"
             f"Аккаунт с адресом {email} пока не зарегистрирован на сайте. "
-            f"Подписка активируется автоматически как только ты войдёшь под этим аккаунтом на panacea.mom."
+            "Подписка активируется автоматически как только ты войдёшь под этим аккаунтом на panacea.mom."
         )
 
-    send_photo(chat_id, PHOTO_MAIN, text, confirm_keyboard())
+    result = send_photo(chat_id, PHOTO_MAIN, text, confirm_keyboard())
+    new_msg_id = result.get("result", {}).get("message_id")
+    if new_msg_id:
+        redis_set(f"main_msg:{chat_id}", str(new_msg_id), ex=86400)
 
     if SUPPORT_CHAT:
         try:
