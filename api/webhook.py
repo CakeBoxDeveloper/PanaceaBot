@@ -779,17 +779,21 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 if db:
                     import re as _re, time
                     key = _re.sub(r'[^a-z0-9]', '_', text.lower())
-                    db.collection('gifts').document(key).set({
-                        'email': text.lower(),
-                        'fromUid': 'admin',
-                        'txid': None,
-                        'method': 'admin_gift',
-                        'purchasedAt': int(time.time() * 1000),
-                        'durationDays': 30,
-                        'claimed': False,
-                        'updatedAt': firestore.SERVER_TIMESTAMP,
-                    })
-                    _post("sendMessage", {"chat_id": chat_id, "text": f"✓ Подарок записан для <b>{text}</b> на 30 дней", "parse_mode": "HTML"})
+                    existing = db.collection('gifts').document(key).get()
+                    if existing.exists and not existing.to_dict().get('claimed', True):
+                        _post("sendMessage", {"chat_id": chat_id, "text": f"⚠️ Подарок для <b>{text}</b> уже существует и не активирован", "parse_mode": "HTML"})
+                    else:
+                        db.collection('gifts').document(key).set({
+                            'email': text.lower(),
+                            'fromUid': 'admin',
+                            'txid': None,
+                            'method': 'admin_gift',
+                            'purchasedAt': int(time.time() * 1000),
+                            'durationDays': 30,
+                            'claimed': False,
+                            'updatedAt': firestore.SERVER_TIMESTAMP,
+                        })
+                        _post("sendMessage", {"chat_id": chat_id, "text": f"✓ Подарок записан для <b>{text}</b> на 30 дней", "parse_mode": "HTML"})
                 else:
                     _post("sendMessage", {"chat_id": chat_id, "text": "✗ Firebase не инициализирован"})
             except Exception as e:
