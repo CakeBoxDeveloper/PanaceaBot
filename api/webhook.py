@@ -780,7 +780,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif state == "admin_waiting_gift_email":
         import re
         if re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', text):
-            _post("sendMessage", {"chat_id": chat_id, "text": f"⏳ Записываю подарок для <b>{text}</b>...", "parse_mode": "HTML"})            try:
+            _post("sendMessage", {"chat_id": chat_id, "text": f"⏳ Записываю подарок для <b>{text}</b>...", "parse_mode": "HTML"})
+            try:
                 db = _get_fb()
                 if db:
                     import re as _re, time
