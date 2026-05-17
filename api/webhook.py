@@ -710,6 +710,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "<i>Подписка активируется при первом входе пользователя на сайт</i>",
             cancel_keyboard("admin_panel"))
 
+    elif data == "admin_revoke_premium":
+        redis_set(f"state:{chat_id}", "admin_waiting_revoke_email")
+        edit_photo(chat_id, msg_id, PHOTO_PLUS,
+            "🚫 <b>Аннулировать Premium</b>\n\nВведи email пользователя:",
+            cancel_keyboard("admin_panel"))
+
     elif data == "admin_logout":
         redis_del(f"state:{chat_id}")
         delete_msg(chat_id, msg_id)
@@ -722,6 +728,7 @@ def _admin_keyboard():
     return raw_keyboard([
         [btn("📹 Загрузить видео",    callback_data="admin_post_video")],
         [btn("🎁 Подарить Premium",   callback_data="admin_gift_premium")],
+        [btn("🚫 Аннулировать Premium", callback_data="admin_revoke_premium")],
         [btn("🚪 Выход",              callback_data="admin_logout")],
     ])
 
@@ -773,8 +780,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif state == "admin_waiting_gift_email":
         import re
         if re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', text):
-            _post("sendMessage", {"chat_id": chat_id, "text": f"⏳ Записываю подарок для <b>{text}</b>...", "parse_mode": "HTML"})
-            try:
+            _post("sendMessage", {"chat_id": chat_id, "text": f"⏳ Записываю подарок для <b>{text}</b>...", "parse_mode": "HTML"})            try:
                 db = _get_fb()
                 if db:
                     import re as _re, time
@@ -802,7 +808,43 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             _show_admin_panel(chat_id)
         else:
             _post("sendMessage", {"chat_id": chat_id, "text": "❌ Это не похоже на email. Попробуй ещё раз:"})
-    
+
+    elif state == "admin_waiting_revoke_email":
+        import re
+        if re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', text):
+            _post("sendMessage", {"chat_id": chat_id, "text": f"⏳ Аннулирую Premium для <b>{text}</b>...", "parse_mode": "HTML"})
+            try:
+                db = _get_fb()
+                if db:
+                    # Find user by email via Firebase Auth
+                    user_record = fb_auth.get_user_by_email(text)
+                    uid = user_record.uid
+                    # Revoke premium_status in Firestore
+                    ref = db.collection('sessions').document(uid).collection('list').document('premium_status')
+                    ref.set({
+                        'active': False,
+                        'revokedAt': firestore.SERVER_TIMESTAMP,
+                        'revokedByAdmin': True,
+                    }, merge=True)
+                    # Also revoke unclaimed gift if exists
+                    import re as _re
+                    key = _re.sub(r'[^a-z0-9]', '_', text.lower())
+                    gift_ref = db.collection('gifts').document(key)
+                    gift_doc = gift_ref.get()
+                    if gift_doc.exists and not gift_doc.to_dict().get('claimed', True):
+                        gift_ref.update({'claimed': True, 'revokedByAdmin': True})
+                    _post("sendMessage", {"chat_id": chat_id, "text": f"✓ Premium аннулирован для <b>{text}</b> (uid: <code>{uid}</code>)", "parse_mode": "HTML"})
+                else:
+                    _post("sendMessage", {"chat_id": chat_id, "text": "✗ Firebase не инициализирован"})
+            except fb_auth.UserNotFoundError:
+                _post("sendMessage", {"chat_id": chat_id, "text": f"✗ Пользователь <b>{text}</b> не найден в Firebase Auth", "parse_mode": "HTML"})
+            except Exception as e:
+                _post("sendMessage", {"chat_id": chat_id, "text": f"✗ Ошибка: {e}"})
+            redis_set(f"state:{chat_id}", "admin_panel")
+            _show_admin_panel(chat_id)
+        else:
+            _post("sendMessage", {"chat_id": chat_id, "text": "❌ Это не похоже на email. Попробуй ещё раз:"})
+
     elif state == STATE_SUPPORT:
         redis_del(f"state:{chat_id}")
         log_to_channel(PHOTO_LOG_MESSAGE,
