@@ -729,6 +729,8 @@ def _show_admin_panel(chat_id):
     send_photo(chat_id, PHOTO_PLUS,
         "<b>🔧 Админ-панель</b>",
         _admin_keyboard())
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg     = update.message
     chat_id = msg.chat_id
     text    = msg.text.strip()
@@ -736,7 +738,7 @@ def _show_admin_panel(chat_id):
     state   = redis_get(f"state:{chat_id}")
 
     delete_msg(chat_id, msg.message_id)
-    
+
     if state == "admin_waiting_password":
         if text == ADMIN_PASSWORD:
             redis_set(f"state:{chat_id}", "admin_panel")
