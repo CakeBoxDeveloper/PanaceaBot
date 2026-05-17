@@ -702,7 +702,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         edit_photo(chat_id, msg_id, PHOTO_PLUS,
             "📹 Отправь ссылку на YouTube видео:\n\nПример: https://www.youtube.com/watch?v=UKUOGqeRWjk",
             cancel_keyboard("admin_panel"))
-    
+
+    elif data == "admin_gift_premium":
+        redis_set(f"state:{chat_id}", "admin_waiting_gift_email")
+        edit_photo(chat_id, msg_id, PHOTO_PLUS,
+            "🎁 <b>Подарить Premium</b>\n\nВведи email получателя:\n\n"
+            "<i>Подписка активируется при первом входе пользователя на сайт</i>",
+            cancel_keyboard("admin_panel"))
+
     elif data == "admin_logout":
         redis_del(f"state:{chat_id}")
         delete_msg(chat_id, msg_id)
@@ -711,7 +718,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "text": "👋 Вышел из админ-панели",
         })
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _admin_keyboard():
+    return raw_keyboard([
+        [btn("📹 Загрузить видео",    callback_data="admin_post_video")],
+        [btn("🎁 Подарить Premium",   callback_data="admin_gift_premium")],
+        [btn("🚪 Выход",              callback_data="admin_logout")],
+    ])
+
+def _show_admin_panel(chat_id):
+    send_photo(chat_id, PHOTO_PLUS,
+        "<b>🔧 Админ-панель</b>",
+        _admin_keyboard())
     msg     = update.message
     chat_id = msg.chat_id
     text    = msg.text.strip()
@@ -720,20 +737,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     delete_msg(chat_id, msg.message_id)
     
-    # Обработка админ-панели
     if state == "admin_waiting_password":
         if text == ADMIN_PASSWORD:
             redis_set(f"state:{chat_id}", "admin_panel")
-            
-            # Показываем админ-панель с фото и кнопкой
-            keyboard = raw_keyboard([
-                [btn("📹 Загрузить видео", callback_data="admin_post_video")],
-                [btn("🚪 Выход", callback_data="admin_logout")],
-            ])
-            
-            send_photo(chat_id, PHOTO_PLUS,
-                "<b>🔧 Админ-панель</b>\n\nЗагрузи видео на канал",
-                keyboard)
+            _show_admin_panel(chat_id)
         else:
             _post("sendMessage", {
                 "chat_id": chat_id,
@@ -742,53 +749,53 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     
     elif state == "admin_waiting_url":
         if "youtube.com" in text or "youtu.be" in text:
-            _post("sendMessage", {
-                "chat_id": chat_id,
-                "text": "⏳ Выкладываю видео...",
-            })
-            
-            # Запускаем скрипт
-            import subprocess
-            import sys
+            _post("sendMessage", {"chat_id": chat_id, "text": "⏳ Выкладываю видео..."})
+            import subprocess, sys
             try:
                 result = subprocess.run(
                     [sys.executable, "post_youtube.py", text],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
+                    capture_output=True, text=True, timeout=60,
                     cwd=os.path.dirname(os.path.abspath(__file__)) + "/../"
                 )
-                
-                if result.returncode == 0:
-                    output = f"✓ Успешно!\n\n{result.stdout}"
-                else:
-                    output = f"✗ Ошибка:\n\n{result.stderr}"
+                output = f"✓ Успешно!\n\n{result.stdout}" if result.returncode == 0 else f"✗ Ошибка:\n\n{result.stderr}"
             except subprocess.TimeoutExpired:
                 output = "✗ Скрипт выполнялся слишком долго (>60 сек)"
             except Exception as e:
                 output = f"✗ Ошибка: {str(e)}"
-            
-            _post("sendMessage", {
-                "chat_id": chat_id,
-                "text": f"<b>Результат:</b>\n\n<code>{output}</code>",
-                "parse_mode": "HTML",
-            })
-            
-            # Возвращаемся в админ-панель
+            _post("sendMessage", {"chat_id": chat_id, "text": f"<b>Результат:</b>\n\n<code>{output}</code>", "parse_mode": "HTML"})
             redis_set(f"state:{chat_id}", "admin_panel")
-            keyboard = raw_keyboard([
-                [btn("📹 Загрузить видео", callback_data="admin_post_video")],
-                [btn("🚪 Выход", callback_data="admin_logout")],
-            ])
-            
-            send_photo(chat_id, PHOTO_PLUS,
-                "<b>🔧 Админ-панель</b>\n\nЗагрузи видео на канал",
-                keyboard)
+            _show_admin_panel(chat_id)
         else:
-            _post("sendMessage", {
-                "chat_id": chat_id,
-                "text": "❌ Это не похоже на YouTube ссылку. Попробуй ещё раз:",
-            })
+            _post("sendMessage", {"chat_id": chat_id, "text": "❌ Это не похоже на YouTube ссылку. Попробуй ещё раз:"})
+
+    elif state == "admin_waiting_gift_email":
+        import re
+        if re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', text):
+            _post("sendMessage", {"chat_id": chat_id, "text": f"⏳ Записываю подарок для <b>{text}</b>...", "parse_mode": "HTML"})
+            try:
+                db = _get_fb()
+                if db:
+                    import re as _re, time
+                    key = _re.sub(r'[^a-z0-9]', '_', text.lower())
+                    db.collection('gifts').document(key).set({
+                        'email': text.lower(),
+                        'fromUid': 'admin',
+                        'txid': None,
+                        'method': 'admin_gift',
+                        'purchasedAt': int(time.time() * 1000),
+                        'durationDays': 30,
+                        'claimed': False,
+                        'updatedAt': firestore.SERVER_TIMESTAMP,
+                    })
+                    _post("sendMessage", {"chat_id": chat_id, "text": f"✓ Подарок записан для <b>{text}</b> на 30 дней", "parse_mode": "HTML"})
+                else:
+                    _post("sendMessage", {"chat_id": chat_id, "text": "✗ Firebase не инициализирован"})
+            except Exception as e:
+                _post("sendMessage", {"chat_id": chat_id, "text": f"✗ Ошибка: {e}"})
+            redis_set(f"state:{chat_id}", "admin_panel")
+            _show_admin_panel(chat_id)
+        else:
+            _post("sendMessage", {"chat_id": chat_id, "text": "❌ Это не похоже на email. Попробуй ещё раз:"})
     
     elif state == STATE_SUPPORT:
         redis_del(f"state:{chat_id}")
@@ -882,82 +889,41 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка текста в админ-панели"""
-    import subprocess
-    import sys
-    
+    import subprocess, sys, re, time
+
     msg     = update.message
     chat_id = msg.chat_id
     text    = msg.text.strip()
     state   = redis_get(f"state:{chat_id}")
-    
+
     delete_msg(chat_id, msg.message_id)
-    
+
     if state == "admin_waiting_password":
         if text == ADMIN_PASSWORD:
             redis_set(f"state:{chat_id}", "admin_panel")
-            
-            # Показываем админ-панель с фото и кнопкой
-            keyboard = raw_keyboard([
-                [btn("📹 Загрузить видео", callback_data="admin_post_video")],
-                [btn("🚪 Выход", callback_data="admin_logout")],
-            ])
-            
-            send_photo(chat_id, PHOTO_PLUS,
-                "<b>🔧 Админ-панель</b>\n\nЗагрузи видео на канал",
-                keyboard)
+            _show_admin_panel(chat_id)
         else:
-            _post("sendMessage", {
-                "chat_id": chat_id,
-                "text": "❌ Неверный пароль. Попробуй ещё раз:",
-            })
-    
+            _post("sendMessage", {"chat_id": chat_id, "text": "❌ Неверный пароль. Попробуй ещё раз:"})
+
     elif state == "admin_waiting_url":
         if "youtube.com" in text or "youtu.be" in text:
-            _post("sendMessage", {
-                "chat_id": chat_id,
-                "text": "⏳ Выкладываю видео...",
-            })
-            
-            # Запускаем скрипт
+            _post("sendMessage", {"chat_id": chat_id, "text": "⏳ Выкладываю видео..."})
             try:
                 result = subprocess.run(
                     [sys.executable, "post_youtube.py", text],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
+                    capture_output=True, text=True, timeout=60,
                     cwd=os.path.dirname(os.path.abspath(__file__)) + "/../"
                 )
-                
-                if result.returncode == 0:
-                    output = f"✓ Успешно!\n\n{result.stdout}"
-                else:
-                    output = f"✗ Ошибка:\n\n{result.stderr}"
+                output = f"✓ Успешно!\n\n{result.stdout}" if result.returncode == 0 else f"✗ Ошибка:\n\n{result.stderr}"
             except subprocess.TimeoutExpired:
                 output = "✗ Скрипт выполнялся слишком долго (>60 сек)"
             except Exception as e:
                 output = f"✗ Ошибка: {str(e)}"
-            
-            _post("sendMessage", {
-                "chat_id": chat_id,
-                "text": f"<b>Результат:</b>\n\n<code>{output}</code>",
-                "parse_mode": "HTML",
-            })
-            
-            # Возвращаемся в админ-панель
+            _post("sendMessage", {"chat_id": chat_id, "text": f"<b>Результат:</b>\n\n<code>{output}</code>", "parse_mode": "HTML"})
             redis_set(f"state:{chat_id}", "admin_panel")
-            keyboard = raw_keyboard([
-                [btn("📹 Загрузить видео", callback_data="admin_post_video")],
-                [btn("🚪 Выход", callback_data="admin_logout")],
-            ])
-            
-            send_photo(chat_id, PHOTO_PLUS,
-                "<b>🔧 Админ-панель</b>\n\nЗагрузи видео на канал",
-                keyboard)
+            _show_admin_panel(chat_id)
         else:
-            _post("sendMessage", {
-                "chat_id": chat_id,
-                "text": "❌ Это не похоже на YouTube ссылку. Попробуй ещё раз:",
-            })
+            _post("sendMessage", {"chat_id": chat_id, "text": "❌ Это не похоже на YouTube ссылку. Попробуй ещё раз:"})
 
 async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.pre_checkout_query.answer(ok=True)
