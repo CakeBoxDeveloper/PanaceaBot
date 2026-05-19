@@ -108,7 +108,7 @@ PHOTO_MAIN    = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/m
 PHOTO_SUPPORT = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaQuest.png"
 PHOTO_PLUS    = "https://raw.githubusercontent.com/CakeBoxDeveloper/PanaceaBot/main/PanaceaGift.png"
 
-STARS_PRICE = 1
+STARS_PRICE = 250
 
 STATE_SUPPORT   = "support"
 STATE_PLUS_SELF = "plus_self"
